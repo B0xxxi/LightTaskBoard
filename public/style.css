@@ -1,0 +1,251 @@
+/* Цветовые переменные */
+:root {
+  --accent: #4caf50;
+  --accent-hover: #388e3c;
+  --bg: #f4f4f7;
+  --card-bg: #ffffff;
+  --text: #333333;
+  --border: #e0e0e0;
+}
+
+/* Общие стили */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Тёмная тема */
+body.dark {
+  --accent: #2e7d32;
+  --accent-hover: #1b5e20;
+  --bg: #121212;
+  --card-bg: #1e1e1e;
+  --text: #e0e0e0;
+  --border: #333;
+}
+
+/* Добавляю специальные стили только для тёмной темы */
+body.dark .add-task {
+  background-color: #262626; /* чуть светлее карточки для разделения */
+  color: #d0d0d0;
+  border-top: 1px solid #333;
+}
+body.dark .add-task:hover {
+  background-color: #303030;
+}
+
+body.dark .delete-column,
+body.dark .delete-task {
+  color: #888;
+}
+body.dark .delete-column:hover,
+body.dark .delete-task:hover {
+  color: #bbb;
+}
+
+body.dark .column-header {
+  border-bottom: 1px solid #333;
+}
+
+.top-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.top-bar button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.top-bar button:hover {
+  background-color: var(--accent-hover);
+}
+
+.board {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.column {
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 100px);
+
+}
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+.column-title[contenteditable="true"] {
+  outline: none;
+}
+.delete-column {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.tasks {
+  flex-grow: 1;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.add-task {
+  border: none;
+  background-color: var(--card-bg);
+  padding: 10px;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.add-task:hover {
+  background-color: #2a2a2a;
+}
+
+/* Светлая тема кнопка add-task */
+body:not(.dark) .add-task {
+  background-color: #e8f0e8;
+  color: #333;
+}
+body:not(.dark) .add-task:hover {
+  background-color: #d3e5d3;
+}
+
+.task {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.task.dragging {
+  opacity: 0.5;
+}
+.task-title[contenteditable="true"] {
+  outline: none;
+  font-weight: 500;
+}
+
+.task-footer {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 12px;
+  color: #666;
+}
+
+.timer {
+  transition: color 0.5s, font-size 0.5s;
+}
+
+/* Стили прокрутки */
+.board::-webkit-scrollbar,
+.tasks::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.board::-webkit-scrollbar-thumb,
+.tasks::-webkit-scrollbar-thumb {
+  background-color: #c0c0c0;
+  border-radius: 4px;
+}
+.board::-webkit-scrollbar-track,
+.tasks::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Модальные окна */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal.hidden {
+  display: none;
+}
+.modal-content {
+  background: #fff;
+  padding: 24px;
+  border-radius: 8px;
+  min-width: 280px;
+  max-width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-content input[type="number"],
+.modal-content input[type="password"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.file-drop {
+  border: 2px dashed #aaa;
+  padding: 20px;
+  text-align: center;
+  border-radius: 6px;
+  color: #666;
+}
+.file-drop.dragover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.delete-task {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.created-date {
+  font-size: 10px;
+  color: #999;
+  margin-right: auto;
+}
+
+.hidden{display:none !important;} 

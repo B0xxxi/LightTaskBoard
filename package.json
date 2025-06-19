@@ -1,0 +1,26 @@
+{
+  "name": "light-taskdoard",
+  "version": "1.0.0",
+  "description": "TaskBoard with easy functional",
+  "homepage": "https://github.com/B0xxxi/LightTaskBoard#readme",
+  "bugs": {
+    "url": "https://github.com/B0xxxi/LightTaskBoard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/B0xxxi/LightTaskBoard.git"
+  },
+  "license": "GPL-3.0",
+  "author": "B0xi",
+  "type": "commonjs",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.4",
+    "sqlite3": "^5.1.6",
+    "dotenv": "^16.4.5"
+  },
+  "scripts": {
+    "test": "npm test",
+    "start": "node server.js"
+  }
+}

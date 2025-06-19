@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Light Task Board</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <button id="addColumnBtn">➕ Категория</button>
+      <button id="timerSettingsBtn">⏱️ Настройки таймера</button>
+      <button id="themeToggle">🌙</button>
+      <button id="logoutBtn" class="hidden">🚪 Выход</button>
+    </header>
+
+    <main class="board" id="board"></main>
+
+    <!-- Шаблон карточки задачи -->
+    <template id="taskTemplate">
+      <div class="task" draggable="true">
+        <div class="task-title" contenteditable="true">Новая задача</div>
+        <div class="task-footer">
+          <span class="created-date"></span>
+          <span class="timer">0s</span>
+          <button class="delete-task">🗑️</button>
+        </div>
+      </div>
+    </template>
+
+    <!-- Шаблон колонки -->
+    <template id="columnTemplate">
+      <section class="column">
+        <header class="column-header">
+          <h2 class="column-title" contenteditable="true">Категория</h2>
+          <button class="delete-column">🗑️</button>
+        </header>
+        <div class="tasks"></div>
+        <button class="add-task">➕ Задача</button>
+      </section>
+    </template>
+
+    <!-- Модальное окно настроек таймера -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Настройки таймера</h3>
+        <label>
+          Предупреждение (мин):
+          <input type="number" id="warnMinutes" min="1" />
+        </label>
+        <label>
+          Просрочка (мин):
+          <input type="number" id="dangerMinutes" min="1" />
+        </label>
+        <label>
+          <input type="checkbox" id="resetOnMove" /> Сбрасывать таймер при перемещении
+        </label>
+        <div class="modal-actions">
+          <button id="saveSettings">Сохранить</button>
+          <button id="closeSettings">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно входа -->
+    <div id="loginModal" class="modal">
+      <div class="modal-content">
+        <h3>Вход</h3>
+        <input type="password" id="passwordInput" placeholder="Пароль" />
+        <p>или перетащите JSON файл с ключом</p>
+        <div id="fileDrop" class="file-drop">Перетащите файл сюда</div>
+        <p>или выберите файл</p>
+        <input type="file" id="keyFileInput" accept="application/json" />
+        <button id="loginBtn">Войти</button>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html> 
