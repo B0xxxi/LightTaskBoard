@@ -15,12 +15,27 @@
   "type": "commonjs",
   "main": "index.js",
   "dependencies": {
+    "dotenv": "^16.4.5",
     "express": "^4.18.4",
-    "sqlite3": "^5.1.6",
-    "dotenv": "^16.4.5"
+    "sqlite3": "^5.1.6"
   },
   "scripts": {
     "test": "npm test",
-    "start": "node server.js"
+    "start": "node server.js",
+    "pm2:start": "npx pm2 start ecosystem.config.json --env production",
+    "pm2:stop": "npx pm2 stop light-taskboard",
+    "pm2:restart": "npx pm2 restart light-taskboard",
+    "pm2:delete": "npx pm2 delete light-taskboard",
+    "pm2:logs": "npx pm2 logs light-taskboard",
+    "pm2:monit": "npx pm2 monit",
+    "pm2:status": "npx pm2 status",
+    "pm2:reload": "npx pm2 reload light-taskboard",
+    "docker:build": "docker build -t light-taskboard .",
+    "docker:run": "docker run -p 3000:3000 -v $(pwd)/data:/app/data -v $(pwd)/tasks.db:/app/tasks.db light-taskboard",
+    "docker:compose": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "pm2": "^6.0.8"
   }
 }

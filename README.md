@@ -25,6 +25,16 @@ npm install
 npm start
 ```
 
+## Деплой
+
+```bash
+npm install
+pm2 start ecosystem.config.json
+pm2 monit # Мониторинг
+pm2 stop lighttaskboard # Остановка
+```
+
+
 Приложение запустится на `http://localhost:3000`.
 
 ### Переменные окружения
@@ -57,4 +67,4 @@ LightTaskBoard/
 
 ## Лицензия
 
-Код распространяется под лицензией **GPL-3.0**. Полный текст лицензии находится в файле `LICENSE`. 
+Код распространяется под лицензией **GPL-3.0**. Полный текст лицензии находится в файле `LICENSE`
