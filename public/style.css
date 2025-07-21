@@ -153,6 +153,21 @@ body:not(.dark) .add-task:hover {
 .task.dragging {
   opacity: 0.5;
 }
+
+.column.dragging {
+  opacity: 0.6;
+  transform: rotate(3deg);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.column[draggable="true"]:hover {
+  cursor: grab;
+}
+
+.column[draggable="true"]:active {
+  cursor: grabbing;
+}
 .task-title[contenteditable="true"] {
   outline: none;
   font-weight: 500;

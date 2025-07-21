@@ -264,6 +264,16 @@ function createColumnDOM({ id, title }) {
 
     board.appendChild(columnEl); // ВАЖНО: добавляем сам элемент, а не DocumentFragment
 
+    // Drag & drop для колонок
+    columnEl.setAttribute('draggable', isAdmin ? 'true' : 'false');
+    columnEl.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      columnEl.classList.add('dragging');
+    });
+    columnEl.addEventListener('dragend', () => {
+      columnEl.classList.remove('dragging');
+    });
+
     // Возвращаем созданный элемент для единообразия
     return columnEl;
 
@@ -348,7 +358,7 @@ function createTaskDOM({ id, title, created_at }) {
 }
 
 /* ================================================
-   Drag & Drop логика
+   Drag & Drop логика для задач
 ================================================ */
 let draggedElement = null;
 
@@ -400,6 +410,68 @@ function getDragAfterElement(container, y) {
     { offset: Number.NEGATIVE_INFINITY }
   ).element;
 }
+
+/* ================================================
+   Drag & Drop логика для колонок
+================================================ */
+function getColumnAfterElement(container, x) {
+  const draggableElements = [...container.querySelectorAll('.column:not(.dragging)')];
+  return draggableElements.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = x - box.left - box.width / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: child };
+      } else {
+        return closest;
+      }
+    },
+    { offset: Number.NEGATIVE_INFINITY }
+  ).element;
+}
+
+// Глобальные обработчики для drag & drop колонок
+document.addEventListener('dragover', (e) => {
+  // Проверяем, что перетаскиваем колонку
+  const draggingColumn = board.querySelector('.column.dragging');
+  if (!draggingColumn || !isAdmin) return;
+  
+  // Находим ближайшую колонку под курсором
+  const column = e.target.closest('.column');
+  if (!column || column === draggingColumn) return;
+  
+  e.preventDefault();
+  
+  // Определяем позицию для вставки
+  const afterElement = getColumnAfterElement(board, e.clientX);
+  if (!afterElement) {
+    board.appendChild(draggingColumn);
+  } else {
+    board.insertBefore(draggingColumn, afterElement);
+  }
+});
+
+document.addEventListener('drop', async (e) => {
+  const draggingColumn = board.querySelector('.column.dragging');
+  if (!draggingColumn || !isAdmin) return;
+  
+  e.preventDefault();
+  draggingColumn.classList.remove('dragging');
+  
+  try {
+    // Сохраняем новый порядок на сервере
+    const ids = Array.from(board.querySelectorAll('.column')).map(col => col.dataset.id);
+    await apiFetch('/api/columns/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+    console.log('Порядок колонок сохранен');
+  } catch (error) {
+    console.error('Ошибка при сохранении порядка колонок:', error);
+    // Перезагружаем состояние в случае ошибки
+    await loadState();
+  }
+});
 
 /* ================================================
    Таймер задач
@@ -474,9 +546,9 @@ function startAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
   }
-  // Запускаем автообновление каждые 30 секунд
-  autoRefreshInterval = setInterval(autoRefresh, 30000);
-  console.log('Автообновление запущено (каждые 30 секунд)');
+  // Запускаем автообновление каждые 7.5 секунд
+  autoRefreshInterval = setInterval(autoRefresh, 7500);
+  console.log('Автообновление запущено (каждые 7.5 секунд)');
 }
 
 function stopAutoRefresh() {

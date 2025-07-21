@@ -151,6 +151,25 @@ app.put('/api/columns/:id', auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/columns/reorder', auth, requireAdmin, async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ error: 'ids array required' });
+  }
+  
+  try {
+    // Обновляем позицию каждой колонки
+    for (let i = 0; i < ids.length; i++) {
+      await run('UPDATE columns SET position = ? WHERE id = ?', [i, ids[i]]);
+    }
+    
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Ошибка при изменении порядка колонок:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /**************** EVENTS ****************/
 app.get('/api/events', auth, async (req, res) => {
   try {
