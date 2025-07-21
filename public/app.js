@@ -105,6 +105,7 @@ async function attemptLogin(key) {
     await loadState();
     applyRoleRestrictions();
     showAuthedUI();
+    startAutoRefresh(); // Запускаем автообновление после успешного входа
   } catch (e) {
     console.error('login-error', e);
     localStorage.removeItem('authKey');
@@ -421,6 +422,55 @@ function updateTimers() {
 setInterval(updateTimers, 1000);
 
 /* ================================================
+   Автообновление данных
+================================================ */
+let autoRefreshInterval = null;
+
+async function autoRefresh() {
+  if (!authKey) return; // Не обновляем если не авторизованы
+  
+  try {
+    console.log('Автообновление данных...');
+    
+    // Обновляем события
+    await loadEvents();
+    renderEventsOverview();
+    
+    // Обновляем состояние доски только если она видима
+    if (!board.classList.contains('hidden')) {
+      await loadState();
+    }
+    
+    // Обновляем календари событий если они видимы
+    if (!eventsSection.classList.contains('hidden')) {
+      rebuildEventsCalendar();
+    }
+    
+    console.log('Автообновление завершено');
+  } catch (error) {
+    console.log('Автообновление пропущено:', error.message);
+    // Не показываем ошибки автообновления пользователю
+  }
+}
+
+function startAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+  }
+  // Запускаем автообновление каждые 30 секунд
+  autoRefreshInterval = setInterval(autoRefresh, 30000);
+  console.log('Автообновление запущено (каждые 30 секунд)');
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+    console.log('Автообновление остановлено');
+  }
+}
+
+/* ================================================
    Модальное окно настроек таймера
 ================================================ */
 function openSettingsModal() {
@@ -545,6 +595,14 @@ function formatDate(ts) {
   return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+// Функция для получения локальной даты в формате YYYY-MM-DD
+function toLocalDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function applyRoleRestrictions() {
   const isAdminView = isAdmin === true;
 
@@ -579,6 +637,7 @@ function hideAuthedUI() {
 }
 
 function logout() {
+  stopAutoRefresh(); // Останавливаем автообновление
   localStorage.removeItem('authKey');
   authKey = '';
   isAdmin = false;
@@ -661,7 +720,7 @@ function renderAdminEventsTable() {
     const isHoliday = isRussianHoliday(dateIterator);
     
     let dayEvents = currentEvents.filter(ev => 
-      ev.date === dateIterator.toISOString().split('T')[0]
+      ev.date === toLocalDateString(dateIterator)
     );
     
     if (dayEvents.length) {
@@ -682,7 +741,7 @@ function renderAdminEventsTable() {
     // контекстное меню
     td.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showCellContextMenu(e.pageX, e.pageY, td, dateIterator.toISOString().split('T')[0]);
+      showCellContextMenu(e.pageX, e.pageY, td, toLocalDateString(dateIterator));
     });
 
     dataRow.appendChild(td);
@@ -692,13 +751,18 @@ function renderAdminEventsTable() {
   eventsOverview.appendChild(table);
 }
 
-let userEventsPage=0;
+let userEventsStart = 0;
 function renderUserEventsList() {
   if(eventsOverview) eventsOverview.innerHTML='';
   const container=document.createElement('div');
   container.className='user-events-container';
   const viewport=document.createElement('div');
   viewport.className='user-events-viewport';
+
+  // Получаем все будущие события
+  const upcoming=[...currentEvents]
+    .filter(ev=> new Date(ev.date + 'T00:00:00') >= new Date().setHours(0,0,0,0))
+    .sort((a,b)=>a.date.localeCompare(b.date));
 
   const prevBtn=document.createElement('button');
   prevBtn.className='events-nav prev';
@@ -708,34 +772,36 @@ function renderUserEventsList() {
   nextBtn.textContent='▶';
   const STEP=2;
   prevBtn.addEventListener('click',()=>{userEventsStart=Math.max(0,userEventsStart-STEP); renderUserEventsList();});
-  nextBtn.addEventListener('click',()=>{userEventsStart=Math.min(upcomingAll.length-12, userEventsStart+STEP); renderUserEventsList();});
+  nextBtn.addEventListener('click',()=>{userEventsStart=Math.min(upcoming.length-12, userEventsStart+STEP); renderUserEventsList();});
 
   const track=document.createElement('div');
   track.className='user-events-list';
 
-  const upcoming=[...currentEvents]
-    .filter(ev=> new Date(ev.date)>=new Date())
-    .sort((a,b)=>a.date.localeCompare(b.date));
-
   if (!upcoming.length) {
     const empty = document.createElement('div');
     empty.textContent = 'Ближайших событий нет';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '20px';
+    empty.style.color = 'var(--text)';
     container.appendChild(empty);
-  } else {
-    upcoming.forEach(ev => {
-      const item = document.createElement('div');
-      item.className = 'user-events-item';
-      const dateEl = document.createElement('div');
-      dateEl.className = 'evt-date';
-      dateEl.textContent = new Date(ev.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-      const titleEl = document.createElement('div');
-      titleEl.className='evt-title';
-      titleEl.textContent = ev.title;
-      item.appendChild(dateEl);
-      item.appendChild(titleEl);
-      track.appendChild(item);
-    });
-  }
+    eventsOverview.appendChild(container);
+    return;
+  } 
+  
+  upcoming.forEach(ev => {
+    const item = document.createElement('div');
+    item.className = 'user-events-item';
+    const dateEl = document.createElement('div');
+    dateEl.className = 'evt-date';
+    dateEl.textContent = new Date(ev.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    const titleEl = document.createElement('div');
+    titleEl.className='evt-title';
+    titleEl.textContent = ev.title;
+    item.appendChild(dateEl);
+    item.appendChild(titleEl);
+    track.appendChild(item);
+  });
+  
   viewport.appendChild(track);
   container.appendChild(prevBtn);
   container.appendChild(viewport);
@@ -815,7 +881,7 @@ function editCellEvent(cell, dateStr = null) {
     const day = Array.from(row.children).indexOf(cell) + 1;
     if (!day) return;
     const today = new Date();
-    const calculatedDateStr = new Date(today.getFullYear(), today.getMonth(), day).toISOString().split('T')[0];
+    const calculatedDateStr = toLocalDateString(new Date(today.getFullYear(), today.getMonth(), day));
     openAddEventModal(calculatedDateStr);
   }
 }
@@ -888,7 +954,7 @@ function renderEventsCalendar(parentEl, offset=0){
 
   const cur=new Date(startDate);
   while(cur<=endDate){
-     const dayEl=createCalendarDay(cur,currentMonth);
+     const dayEl=createCalendarDay(new Date(cur), currentMonth); // Передаем копию даты
      calendarGrid.appendChild(dayEl);
      cur.setDate(cur.getDate()+1);
    }
@@ -994,7 +1060,7 @@ function createCalendarDay(date, currentMonth) {
   eventsContainer.className = 'day-events';
 
   // Находим события для этого дня
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = toLocalDateString(date);
   const dayEvents = currentEvents.filter(event => event.date === dateStr);
 
   dayEvents.forEach(event => {
