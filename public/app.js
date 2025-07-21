@@ -620,43 +620,73 @@ function renderEventsOverview() {
 
 function renderAdminEventsTable() {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  // Создаем диапазон ±15 дней от сегодня
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 15);
+  const endDate = new Date(today);
+  endDate.setDate(today.getDate() + 15);
+  
+  const totalDays = 31; // всего 31 день (15 + 1 + 15)
 
   const table = document.createElement('table');
   table.className = 'admin-events-table';
 
-  // Первая строка – номера
+  // Первая строка – номера дней
   const headerRow = document.createElement('tr');
-  for (let d = 1; d <= daysInMonth; d++) {
+  const currentDate = new Date(startDate);
+  for (let i = 0; i < totalDays; i++) {
     const th = document.createElement('th');
-    th.textContent = String(d).padStart(2, '0');
+    th.textContent = String(currentDate.getDate()).padStart(2, '0');
+    
+    // Выделяем сегодняшний день
+    if (currentDate.toDateString() === today.toDateString()) {
+      th.style.backgroundColor = 'var(--accent)';
+      th.style.color = 'white';
+      th.style.fontWeight = 'bold';
+    }
+    
     headerRow.appendChild(th);
+    currentDate.setDate(currentDate.getDate() + 1);
   }
   table.appendChild(headerRow);
 
-  // Вторая строка – содержимое (звёздочки на выходные)
+  // Вторая строка – содержимое
   const dataRow = document.createElement('tr');
-  for (let d = 1; d <= daysInMonth; d++) {
+  const dateIterator = new Date(startDate);
+  
+  for (let i = 0; i < totalDays; i++) {
     const td = document.createElement('td');
-    const dateObj = new Date(year, month, d);
-    const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-    let dayEvents = currentEvents.filter(ev=>ev.date===new Date(year,month,d).toISOString().split('T')[0]);
-    if(dayEvents.length){
-      td.textContent=dayEvents[0].title;
-    } else if(isWeekend){
+    const isWeekendOrHol = isWeekendOrHoliday(dateIterator);
+    const isHoliday = isRussianHoliday(dateIterator);
+    
+    let dayEvents = currentEvents.filter(ev => 
+      ev.date === dateIterator.toISOString().split('T')[0]
+    );
+    
+    if (dayEvents.length) {
+      td.textContent = dayEvents[0].title;
+      if (isHoliday) {
+        td.classList.add('color-red');
+      } else if (isWeekendOrHol) {
+        td.classList.add('weekend');
+      }
+    } else if (isHoliday) {
+      td.classList.add('color-red');
+      td.textContent = '🎉';
+    } else if (isWeekendOrHol) {
       td.classList.add('weekend');
-      td.textContent='*';
+      td.textContent = '*';
     }
 
     // контекстное меню
     td.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showCellContextMenu(e.pageX, e.pageY, td);
+      showCellContextMenu(e.pageX, e.pageY, td, dateIterator.toISOString().split('T')[0]);
     });
 
     dataRow.appendChild(td);
+    dateIterator.setDate(dateIterator.getDate() + 1);
   }
   table.appendChild(dataRow);
   eventsOverview.appendChild(table);
@@ -690,7 +720,7 @@ function renderUserEventsList() {
   if (!upcoming.length) {
     const empty = document.createElement('div');
     empty.textContent = 'Ближайших событий нет';
-    wrapper.appendChild(empty);
+    container.appendChild(empty);
   } else {
     upcoming.forEach(ev => {
       const item = document.createElement('div');
@@ -740,7 +770,7 @@ function renderUserEventsList() {
 }
 
 /* =========== контекстное меню для ячеек =========== */
-function showCellContextMenu(x, y, cell) {
+function showCellContextMenu(x, y, cell, dateStr = null) {
   hideContextMenu();
   contextMenuEl = document.createElement('div');
   contextMenuEl.style.position = 'absolute';
@@ -754,7 +784,7 @@ function showCellContextMenu(x, y, cell) {
   const options = [
     { label: '🟩 Зелёный', action: () => toggleCellColor(cell, 'color-green') },
     { label: '🟥 Красный', action: () => toggleCellColor(cell, 'color-red') },
-    { label: '✏️ Редактировать', action: () => editCellEvent(cell) },
+    { label: '✏️ Редактировать', action: () => editCellEvent(cell, dateStr) },
     { label: '❌ Очистить', action: () => clearCell(cell) },
   ];
   options.forEach(opt => {
@@ -774,14 +804,20 @@ function showCellContextMenu(x, y, cell) {
 function hideContextMenu() { if (contextMenuEl) { contextMenuEl.remove(); contextMenuEl = null; } }
 function toggleCellColor(cell, cls) { cell.classList.toggle(cls); }
 function clearCell(cell) { cell.classList.remove('color-green','color-red'); cell.textContent=''; }
-function editCellEvent(cell) {
-  const row = cell.parentElement;
-  if (!row || !row.previousSibling) return;
-  const day = Array.from(row.children).indexOf(cell) + 1;
-  if (!day) return;
-  const today = new Date();
-  const dateStr = new Date(today.getFullYear(), today.getMonth(), day).toISOString().split('T')[0];
-  openAddEventModal(dateStr);
+function editCellEvent(cell, dateStr = null) {
+  if (dateStr) {
+    // Если дата передана напрямую, используем её
+    openAddEventModal(dateStr);
+  } else {
+    // Старая логика для обратной совместимости
+    const row = cell.parentElement;
+    if (!row || !row.previousSibling) return;
+    const day = Array.from(row.children).indexOf(cell) + 1;
+    if (!day) return;
+    const today = new Date();
+    const calculatedDateStr = new Date(today.getFullYear(), today.getMonth(), day).toISOString().split('T')[0];
+    openAddEventModal(calculatedDateStr);
+  }
 }
 
 // Переключение между доской и событиями
@@ -828,20 +864,28 @@ function renderEventsCalendar(parentEl, offset=0){
   calendarGrid.className='events-calendar';
   parentEl.appendChild(calendarGrid);
 
-  // далее старая логика генерации дней, но в grid calendarGrid
+  // Логика генерации месячного календаря
   const firstDay=new Date(currentYear,currentMonth,1);
   const lastDay=new Date(currentYear,currentMonth+1,0);
   const startDate=new Date(firstDay);
   startDate.setDate(startDate.getDate()-(firstDay.getDay()===0?6:firstDay.getDay()-1));
   const endDate=new Date(lastDay);
   endDate.setDate(endDate.getDate()+(7-lastDay.getDay())%7);
+
+  // Заголовки дней недели
   const dayHeaders=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
   dayHeaders.forEach(d=>{
     const h=document.createElement('div');
     h.className='calendar-header';
     h.textContent=d;
+    h.style.fontWeight = 'bold';
+    h.style.padding = '8px';
+    h.style.backgroundColor = 'var(--accent)';
+    h.style.color = 'white';
+    h.style.textAlign = 'center';
     calendarGrid.appendChild(h);
   });
+
   const cur=new Date(startDate);
   while(cur<=endDate){
      const dayEl=createCalendarDay(cur,currentMonth);
@@ -855,6 +899,50 @@ function showBoardView() {
   board.classList.remove('hidden');
 }
 
+// Функция определения российских праздников
+function isRussianHoliday(date) {
+  const month = date.getMonth() + 1; // JavaScript месяцы начинаются с 0
+  const day = date.getDate();
+  const year = date.getFullYear();
+  
+  // Фиксированные праздники
+  const fixedHolidays = [
+    { month: 1, day: 1 },   // Новый год
+    { month: 1, day: 2 },   // Новогодние каникулы
+    { month: 1, day: 3 },   // Новогодние каникулы
+    { month: 1, day: 4 },   // Новогодние каникулы
+    { month: 1, day: 5 },   // Новогодние каникулы
+    { month: 1, day: 6 },   // Новогодние каникулы
+    { month: 1, day: 7 },   // Рождество Христово
+    { month: 1, day: 8 },   // Новогодние каникулы
+    { month: 2, day: 23 },  // День защитника Отечества
+    { month: 3, day: 8 },   // Международный женский день
+    { month: 5, day: 1 },   // Праздник Весны и Труда
+    { month: 5, day: 9 },   // День Победы
+    { month: 6, day: 12 },  // День России
+    { month: 11, day: 4 },  // День народного единства
+  ];
+  
+  // Проверяем фиксированные праздники
+  for (const holiday of fixedHolidays) {
+    if (month === holiday.month && day === holiday.day) {
+      return true;
+    }
+  }
+  
+  // Переходящие праздники (примерные даты для ближайших лет)
+  // Пасха и связанные с ней праздники рассчитываются сложно, 
+  // здесь упрощенная версия для основных дат
+  
+  return false;
+}
+
+// Функция определения выходных дней (суббота, воскресенье + праздники)
+function isWeekendOrHoliday(date) {
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6 || isRussianHoliday(date);
+}
+
 
 
 // Создание элемента дня календаря
@@ -864,18 +952,41 @@ function createCalendarDay(date, currentMonth) {
 
   const isCurrentMonth = date.getMonth() === currentMonth;
   const isToday = date.toDateString() === new Date().toDateString();
+  const isWeekendOrHol = isWeekendOrHoliday(date);
+  const isHoliday = isRussianHoliday(date);
 
   if (!isCurrentMonth) {
     dayEl.classList.add('other-month');
   }
+  
   if (isToday) {
     dayEl.classList.add('today');
+  }
+  
+  // Добавляем класс для выходных и праздников
+  if (isWeekendOrHol) {
+    dayEl.classList.add('weekend-or-holiday');
+  }
+  
+  // Специальный класс для государственных праздников
+  if (isHoliday) {
+    dayEl.classList.add('russian-holiday');
   }
 
   // Номер дня
   const dayNumber = document.createElement('div');
   dayNumber.className = 'day-number';
   dayNumber.textContent = date.getDate();
+  
+  // Добавляем индикатор праздника только для текущего месяца
+  if (isCurrentMonth) {
+    if (isHoliday) {
+      dayNumber.textContent += ' 🎉';
+    } else if (isWeekendOrHol) {
+      dayNumber.textContent += ' 🏠';
+    }
+  }
+  
   dayEl.appendChild(dayNumber);
 
   // Контейнер для событий
@@ -902,7 +1013,7 @@ function createCalendarDay(date, currentMonth) {
     eventsContainer.appendChild(eventEl);
   });
 
-  // Кнопка добавления события (только для админа)
+  // Кнопка добавления события (только для админа и только для дней текущего месяца)
   if (isAdmin && isCurrentMonth) {
     const addBtn = document.createElement('button');
     addBtn.className = 'add-event-day';
