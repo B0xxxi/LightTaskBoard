@@ -11,6 +11,7 @@
       <button id="addColumnBtn">➕ Категория</button>
       <button id="timerSettingsBtn">⏱️ Настройки таймера</button>
       <button id="eventsBtn">📅 События</button>
+      <button id="soundboardBtn">🔊 Саундборд</button>
       <button id="themeToggle">🌙</button>
       <button id="logoutBtn" class="hidden">🚪 Выход</button>
     </header>
@@ -95,6 +96,47 @@
         <div class="modal-actions">
           <button id="saveEvent">Сохранить</button>
           <button id="cancelEvent">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно саундборда -->
+    <div id="soundboardModal" class="modal hidden">
+      <div class="modal-content soundboard-content">
+        <h3>Саундборд</h3>
+        
+        <!-- Встроенные звуки -->
+        <div class="sound-section">
+          <h4>Встроенные звуки</h4>
+          <div class="soundboard-grid">
+            <button class="sound-btn builtin-sound" data-sound="notification">🔔 Уведомление</button>
+            <button class="sound-btn builtin-sound" data-sound="success">✅ Успех</button>
+            <button class="sound-btn builtin-sound" data-sound="error">❌ Ошибка</button>
+            <button class="sound-btn builtin-sound" data-sound="attention">⚠️ Внимание</button>
+            <button class="sound-btn builtin-sound" data-sound="applause">👏 Аплодисменты</button>
+            <button class="sound-btn builtin-sound" data-sound="horn">📯 Гудок</button>
+            <button class="sound-btn builtin-sound" data-sound="bell">🔔 Звонок</button>
+            <button class="sound-btn builtin-sound" data-sound="whistle">🎵 Свисток</button>
+          </div>
+        </div>
+
+        <!-- Кастомные звуки -->
+        <div class="sound-section">
+          <h4>Кастомные звуки</h4>
+          <div id="customSoundsGrid" class="soundboard-grid">
+            <!-- Динамически загружаются -->
+          </div>
+          
+          <!-- Форма загрузки -->
+          <div class="upload-section">
+            <input type="text" id="soundName" placeholder="Название звука" maxlength="50" />
+            <input type="file" id="soundFile" accept="audio/*" />
+            <button id="uploadSound" type="button">📤 Загрузить</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="closeSoundboard">Закрыть</button>
         </div>
       </div>
     </div>

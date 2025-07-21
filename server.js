@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 require('dotenv').config();
 const { db } = require('./db');
 
@@ -14,6 +15,41 @@ let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 let KEY_FILE_SECRET = process.env.KEY_FILE_SECRET || null;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'session';
 let VIEWER_PASSWORD = process.env.VIEWER_PASSWORD || null;
+
+// Временное хранилище звуковых команд (в production лучше использовать Redis или базу данных)
+const soundCommands = [];
+const SOUND_RETENTION_TIME = 60000; // Храним команды 1 минуту
+
+// Настройка загрузки файлов для кастомных звуков
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const soundsDir = path.join(__dirname, 'public', 'sounds');
+    if (!fs.existsSync(soundsDir)) {
+      fs.mkdirSync(soundsDir, { recursive: true });
+    }
+    cb(null, soundsDir);
+  },
+  filename: (req, file, cb) => {
+    // Генерируем уникальное имя файла
+    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB лимит
+  },
+  fileFilter: (req, file, cb) => {
+    // Разрешаем только аудио файлы
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Только аудио файлы разрешены!'), false);
+    }
+  }
+});
 
 function determineRole(key){
   const k = key ? String(key).trim() : '';
@@ -198,6 +234,122 @@ app.delete('/api/tasks/:id', auth, requireAdmin, async (req, res) => {
   try {
     await run('DELETE FROM tasks WHERE id=?', [req.params.id]);
     res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**************** CUSTOM SOUNDS ****************/
+// Получить список кастомных звуков
+app.get('/api/sounds/custom', auth, async (req, res) => {
+  try {
+    const sounds = await all('SELECT id, name, filename, original_name FROM custom_sounds ORDER BY name');
+    res.json({ sounds });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Загрузить кастомный звук
+app.post('/api/sounds/upload', auth, requireAdmin, upload.single('soundFile'), async (req, res) => {
+  try {
+    const { soundName } = req.body;
+    if (!soundName || !req.file) {
+      return res.status(400).json({ error: 'Название и файл обязательны' });
+    }
+
+    // Проверяем, что звук с таким именем еще не существует
+    const existing = await get('SELECT id FROM custom_sounds WHERE name = ?', [soundName]);
+    if (existing) {
+      // Удаляем загруженный файл
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Звук с таким названием уже существует' });
+    }
+
+    // Сохраняем в базу
+    const info = await run(
+      'INSERT INTO custom_sounds (name, filename, original_name) VALUES (?, ?, ?)',
+      [soundName, req.file.filename, req.file.originalname]
+    );
+
+    res.json({ 
+      id: info.lastID, 
+      name: soundName,
+      filename: req.file.filename,
+      original_name: req.file.originalname
+    });
+  } catch (e) {
+    // В случае ошибки удаляем файл
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Удалить кастомный звук
+app.delete('/api/sounds/custom/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    const sound = await get('SELECT filename FROM custom_sounds WHERE id = ?', [req.params.id]);
+    if (sound) {
+      // Удаляем файл
+      const filePath = path.join(__dirname, 'public', 'sounds', sound.filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      
+      // Удаляем из базы
+      await run('DELETE FROM custom_sounds WHERE id = ?', [req.params.id]);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**************** SOUNDBOARD ****************/
+// Очистка старых звуковых команд
+function cleanOldSounds() {
+  const now = Date.now();
+  const index = soundCommands.findIndex(cmd => now - cmd.timestamp < SOUND_RETENTION_TIME);
+  if (index > 0) {
+    soundCommands.splice(0, index);
+  }
+}
+
+// Отправка звука всем viewer'ам (только админ)
+app.post('/api/sound/broadcast', auth, requireAdmin, async (req, res) => {
+  const { sound, timestamp, isCustom } = req.body;
+  if (!sound) return res.status(400).json({ error: 'sound name required' });
+  
+  try {
+    cleanOldSounds();
+    soundCommands.push({
+      sound,
+      timestamp: timestamp || Date.now(),
+      isCustom: !!isCustom,
+      id: Date.now() + Math.random() // уникальный ID для команды
+    });
+    
+    console.log(`Звук ${sound} (${isCustom ? 'кастомный' : 'встроенный'}) добавлен в очередь для viewer'ов`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Проверка новых звуковых команд (только для viewer'ов)
+app.get('/api/sound/check', auth, async (req, res) => {
+  if (req.role === 'admin') {
+    return res.json({ sounds: [] }); // Админ не получает звуки
+  }
+  
+  const since = parseInt(req.query.since) || 0;
+  
+  try {
+    cleanOldSounds();
+    const newSounds = soundCommands.filter(cmd => cmd.timestamp > since);
+    res.json({ sounds: newSounds });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

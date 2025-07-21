@@ -24,6 +24,13 @@ db.serialize(() => {
     title TEXT NOT NULL,
     description TEXT
   );`);
+  db.run(`CREATE TABLE IF NOT EXISTS custom_sounds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,  /* Название звука */
+    filename TEXT NOT NULL,     /* Имя файла */
+    original_name TEXT NOT NULL, /* Оригинальное имя файла */
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+  );`);
 });
 
 module.exports = { db };

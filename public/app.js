@@ -31,6 +31,15 @@ const themeToggle = document.getElementById('themeToggle');
 
 const logoutBtn = document.getElementById('logoutBtn');
 
+// Саундборд
+const soundboardBtn = document.getElementById('soundboardBtn');
+const soundboardModal = document.getElementById('soundboardModal');
+const closeSoundboardBtn = document.getElementById('closeSoundboard');
+const uploadSoundBtn = document.getElementById('uploadSound');
+const soundNameInput = document.getElementById('soundName');
+const soundFileInput = document.getElementById('soundFile');
+const customSoundsGrid = document.getElementById('customSoundsGrid');
+
 // События
 const eventsBtn = document.getElementById('eventsBtn');
 const eventsSection = document.getElementById('eventsSection');
@@ -48,6 +57,8 @@ const cancelEventBtn = document.getElementById('cancelEvent');
 
 let currentEvents = [];
 let editingEventId = null;
+let lastSoundCheck = 0; // Временная метка последней проверки звуков
+let customSounds = []; // Список кастомных звуков
 
 /* ================================================
    Конфигурация таймера (секунды)
@@ -99,6 +110,7 @@ async function attemptLogin(key) {
     authKey = key;
     localStorage.setItem('authKey', key);
     isAdmin = resp.role === 'admin';
+    lastSoundCheck = Date.now(); // Инициализируем проверку звуков
       await loadEvents();
       renderEventsOverview();
     hideLogin();
@@ -436,6 +448,11 @@ async function autoRefresh() {
     await loadEvents();
     renderEventsOverview();
     
+    // Проверяем звуковые команды для viewer'ов
+    if (!isAdmin) {
+      await checkForSounds();
+    }
+    
     // Обновляем состояние доски только если она видима
     if (!board.classList.contains('hidden')) {
       await loadState();
@@ -610,6 +627,7 @@ function applyRoleRestrictions() {
   if (addColumnBtn) addColumnBtn.style.display = isAdminView ? '' : 'none';
   if (timerSettingsBtn) timerSettingsBtn.style.display = isAdminView ? '' : 'none';
   if (addEventBtn) addEventBtn.style.display = isAdminView ? '' : 'none';
+  if (soundboardBtn) soundboardBtn.style.display = isAdminView ? '' : 'none';
 
   // Показываем или скрываем кнопки внутри колонок и задач
   document.querySelectorAll('.delete-column,.delete-task,.add-task').forEach(el => {
@@ -648,6 +666,289 @@ function logout() {
   showLogin();
 }
 logoutBtn.addEventListener('click', logout);
+
+/* ================================================
+   Саундборд
+================================================ */
+
+// Функция открытия/закрытия саундборда
+function openSoundboard() {
+  soundboardModal.classList.remove('hidden');
+  if (isAdmin) {
+    loadCustomSounds();
+  }
+}
+
+function closeSoundboard() {
+  soundboardModal.classList.add('hidden');
+}
+
+// Функция воспроизведения звука локально
+function playSound(soundName, isCustom = false) {
+  try {
+    if (isCustom) {
+      // Кастомный звук - воспроизводим аудио файл
+      const audio = new Audio(`/sounds/${soundName}`);
+      audio.volume = 0.7;
+      audio.play().catch(error => {
+        console.error('Ошибка воспроизведения кастомного звука:', error);
+      });
+      return;
+    }
+    
+    // Встроенные звуки через Web Audio API
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) {
+      console.warn('Web Audio API не поддерживается в этом браузере');
+      return;
+    }
+    
+    const audioContext = new AudioContext();
+    
+    const sounds = {
+      notification: { frequency: 800, duration: 200, type: 'sine' },
+      success: { frequency: 600, duration: 300, type: 'triangle' },
+      error: { frequency: 300, duration: 500, type: 'sawtooth' },
+      attention: { frequency: 1000, duration: 150, type: 'square' },
+      applause: { frequency: 400, duration: 1000, type: 'noise' },
+      horn: { frequency: 200, duration: 800, type: 'sawtooth' },
+      bell: { frequency: 880, duration: 400, type: 'sine' },
+      whistle: { frequency: 1200, duration: 250, type: 'triangle' }
+    };
+    
+    const sound = sounds[soundName];
+    if (!sound) {
+      console.warn(`Звук ${soundName} не найден`);
+      return;
+    }
+    
+    if (sound.type === 'noise') {
+      // Белый шум для аплодисментов
+      const bufferSize = audioContext.sampleRate * (sound.duration / 1000);
+      const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+      const output = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      
+      const source = audioContext.createBufferSource();
+      const gainNode = audioContext.createGain();
+      
+      source.buffer = buffer;
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + sound.duration / 1000);
+      
+      source.start();
+    } else {
+      // Обычные тоновые звуки
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(sound.frequency, audioContext.currentTime);
+      oscillator.type = sound.type;
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + sound.duration / 1000);
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + sound.duration / 1000);
+    }
+  } catch (error) {
+    console.error('Ошибка воспроизведения звука:', error);
+  }
+}
+
+// Функция отправки звука всем viewer'ам (только для админа)
+async function broadcastSound(soundName, isCustom = false) {
+  if (!isAdmin) return;
+  
+  try {
+    await apiFetch('/api/sound/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        sound: soundName, 
+        timestamp: Date.now(),
+        isCustom: isCustom 
+      })
+    });
+    console.log(`Звук ${soundName} отправлен всем пользователям`);
+  } catch (err) {
+    console.error('Ошибка при отправке звука:', err);
+  }
+}
+
+// Функция проверки новых звуковых команд (для viewer'ов)
+async function checkForSounds() {
+  if (isAdmin) return; // Админ не получает звуки
+  
+  try {
+    const data = await apiFetch(`/api/sound/check?since=${lastSoundCheck}`);
+    if (data.sounds && data.sounds.length > 0) {
+      data.sounds.forEach(soundCommand => {
+        console.log(`Получен звук: ${soundCommand.sound}`);
+        playSound(soundCommand.sound, soundCommand.isCustom);
+        lastSoundCheck = Math.max(lastSoundCheck, soundCommand.timestamp);
+      });
+    }
+  } catch (err) {
+    // Тихо игнорируем ошибки проверки звуков
+    console.log('Проверка звуков пропущена:', err.message);
+  }
+}
+
+// Загрузка списка кастомных звуков
+async function loadCustomSounds() {
+  if (!isAdmin) return;
+  
+  try {
+    const data = await apiFetch('/api/sounds/custom');
+    customSounds = data.sounds || [];
+    renderCustomSounds();
+  } catch (err) {
+    console.error('Ошибка при загрузке кастомных звуков:', err);
+  }
+}
+
+// Отрисовка кастомных звуков
+function renderCustomSounds() {
+  if (!customSoundsGrid) return;
+  
+  customSoundsGrid.innerHTML = '';
+  
+  if (customSounds.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.textContent = 'Кастомные звуки не загружены';
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.textAlign = 'center';
+    emptyMsg.style.color = '#666';
+    emptyMsg.style.fontStyle = 'italic';
+    customSoundsGrid.appendChild(emptyMsg);
+    return;
+  }
+  
+  customSounds.forEach(sound => {
+    const btn = document.createElement('button');
+    btn.className = 'sound-btn custom-sound';
+    btn.dataset.sound = sound.filename;
+    btn.dataset.soundId = sound.id;
+    btn.innerHTML = `🎵 ${sound.name}`;
+    
+    if (isAdmin) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-sound';
+      deleteBtn.innerHTML = '×';
+      deleteBtn.title = 'Удалить звук';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteCustomSound(sound.id, sound.name);
+      });
+      btn.appendChild(deleteBtn);
+    }
+    
+    customSoundsGrid.appendChild(btn);
+  });
+}
+
+// Загрузка нового кастомного звука
+async function uploadCustomSound() {
+  const name = soundNameInput.value.trim();
+  const file = soundFileInput.files[0];
+  
+  if (!name || !file) {
+    alert('Пожалуйста, введите название и выберите файл');
+    return;
+  }
+  
+  if (file.size > 5 * 1024 * 1024) {
+    alert('Файл слишком большой (максимум 5MB)');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('soundName', name);
+  formData.append('soundFile', file);
+  
+  try {
+    uploadSoundBtn.disabled = true;
+    uploadSoundBtn.textContent = '🔄 Загрузка...';
+    
+    const response = await fetch('/api/sounds/upload', {
+      method: 'POST',
+      headers: {
+        'x-auth-key': authKey
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Ошибка загрузки');
+    }
+    
+    // Очищаем форму
+    soundNameInput.value = '';
+    soundFileInput.value = '';
+    
+    // Перезагружаем список
+    await loadCustomSounds();
+    
+    alert(`Звук "${name}" успешно загружен!`);
+  } catch (err) {
+    console.error('Ошибка при загрузке звука:', err);
+    alert(`Ошибка загрузки: ${err.message}`);
+  } finally {
+    uploadSoundBtn.disabled = false;
+    uploadSoundBtn.textContent = '📤 Загрузить';
+  }
+}
+
+// Удаление кастомного звука
+async function deleteCustomSound(soundId, soundName) {
+  if (!confirm(`Удалить звук "${soundName}"?`)) return;
+  
+  try {
+    await apiFetch(`/api/sounds/custom/${soundId}`, {
+      method: 'DELETE'
+    });
+    
+    await loadCustomSounds();
+    console.log(`Звук "${soundName}" удален`);
+  } catch (err) {
+    console.error('Ошибка при удалении звука:', err);
+    alert(`Ошибка удаления: ${err.message}`);
+  }
+}
+
+// Обработчики событий для саундборда
+soundboardBtn.addEventListener('click', openSoundboard);
+closeSoundboardBtn.addEventListener('click', closeSoundboard);
+uploadSoundBtn.addEventListener('click', uploadCustomSound);
+
+// Обработчик клика по кнопкам звуков
+soundboardModal.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('sound-btn') && !e.target.classList.contains('delete-sound')) {
+    const soundName = e.target.dataset.sound;
+    const isCustom = e.target.classList.contains('custom-sound');
+    
+    // Воспроизводим звук локально у админа
+    playSound(soundName, isCustom);
+    
+    // Отправляем звук всем viewer'ам
+    await broadcastSound(soundName, isCustom);
+  }
+});
+
+// Закрытие модального окна по клику вне его
+soundboardModal.addEventListener('click', (e) => {
+  if (e.target === soundboardModal) closeSoundboard();
+});
 
 /* ================================================
    События - функции

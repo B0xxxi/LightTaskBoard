@@ -641,4 +641,157 @@ body.dark .modal-content textarea:focus {
   }
 }
 
+/* Стили для саундборда */
+.soundboard-content {
+  min-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.sound-section {
+  margin-bottom: 25px;
+}
+
+.sound-section h4 {
+  margin: 0 0 15px 0;
+  color: var(--text);
+  font-size: 16px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 5px;
+}
+
+.soundboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.sound-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 15px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+
+.sound-btn:hover {
+  background: var(--accent-hover);
+}
+
+.sound-btn:active {
+  transform: scale(0.98);
+}
+
+.sound-btn.custom-sound {
+  background: #9c27b0;
+}
+
+.sound-btn.custom-sound:hover {
+  background: #7b1fa2;
+}
+
+.delete-sound {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  display: none;
+}
+
+.sound-btn:hover .delete-sound {
+  display: block;
+}
+
+.upload-section {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 15px;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 2px dashed var(--border);
+}
+
+.upload-section input[type="text"] {
+  flex: 1;
+  min-width: 150px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.upload-section input[type="file"] {
+  flex: 1;
+  min-width: 150px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.upload-section button {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.upload-section button:hover {
+  background: #f57c00;
+}
+
+.upload-section button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .soundboard-content {
+    min-width: 90vw;
+  }
+  
+  .soundboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .sound-btn {
+    padding: 12px 8px;
+    font-size: 12px;
+  }
+  
+  .upload-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .upload-section input {
+    min-width: auto;
+  }
+}
+
 .hidden{display:none !important;}
