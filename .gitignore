@@ -6,6 +6,12 @@ tasks.db
 .vscode/
 # Logs
 npm-debug.log*
+*.log
+# Build outputs
+dist/
+build/
+# Dependency directories
+node_modules/
 # OS files
 .DS_Store
 Thumbs.db 
