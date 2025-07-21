@@ -31,6 +31,24 @@ const themeToggle = document.getElementById('themeToggle');
 
 const logoutBtn = document.getElementById('logoutBtn');
 
+// События
+const eventsBtn = document.getElementById('eventsBtn');
+const eventsSection = document.getElementById('eventsSection');
+const addEventBtn = document.getElementById('addEventBtn');
+const backToBoardBtn = document.getElementById('backToBoardBtn');
+const eventsCalendar = document.getElementById('eventsCalendar');
+
+const eventModal = document.getElementById('eventModal');
+const eventModalTitle = document.getElementById('eventModalTitle');
+const eventDate = document.getElementById('eventDate');
+const eventTitle = document.getElementById('eventTitle');
+const eventDescription = document.getElementById('eventDescription');
+const saveEventBtn = document.getElementById('saveEvent');
+const cancelEventBtn = document.getElementById('cancelEvent');
+
+let currentEvents = [];
+let editingEventId = null;
+
 /* ================================================
    Конфигурация таймера (секунды)
 ================================================ */
@@ -47,6 +65,8 @@ let timerConfig = {
 ================================================ */
 let authKey = localStorage.getItem('authKey') || '';
 let isAdmin = false;
+const eventsOverview = document.getElementById('eventsOverview');
+let contextMenuEl = null;
 
 async function apiFetch(url, opts = {}) {
   const options = { ...opts };
@@ -68,6 +88,8 @@ async function apiFetch(url, opts = {}) {
 }
 
 async function attemptLogin(key) {
+  // после успешного логина позже вызовем загрузку событий и отрисовку
+
   try {
     const resp = await apiFetch('/api/login', {
       method: 'POST',
@@ -77,6 +99,8 @@ async function attemptLogin(key) {
     authKey = key;
     localStorage.setItem('authKey', key);
     isAdmin = resp.role === 'admin';
+      await loadEvents();
+      renderEventsOverview();
     hideLogin();
     await loadState();
     applyRoleRestrictions();
@@ -173,7 +197,7 @@ function createColumnDOM({ id, title }) {
 
     const columnClone = columnTemplate.content.cloneNode(true);
     const columnEl = columnClone.querySelector('.column');
-    
+
     if (!columnEl) {
       console.error('Не удалось найти элемент ".column" в клоне шаблона.', columnClone);
       // Попробуем найти его другим способом для отладки
@@ -186,7 +210,7 @@ function createColumnDOM({ id, title }) {
     const deleteBtn = columnClone.querySelector('.delete-column');
     const addTaskBtn = columnClone.querySelector('.add-task');
     const tasksContainer = columnClone.querySelector('.tasks');
-    
+
     if (!titleEl || !deleteBtn || !addTaskBtn || !tasksContainer) {
       console.error('Структура шаблона колонки некорректна, один из элементов не найден');
       return null;
@@ -446,7 +470,7 @@ async function loadState() {
     }
 
     board.innerHTML = '';
-    
+
     // Создаём колонки
     data.columns.forEach((col) => {
       if (col && col.id && col.title) {
@@ -455,7 +479,7 @@ async function loadState() {
         console.warn('Пропущена колонка с недопустимыми данными:', col);
       }
     });
-    
+
     // Сопоставление колонки -> tasks контейнер
     const map = {};
     board.querySelectorAll('.column').forEach((colEl) => {
@@ -464,7 +488,7 @@ async function loadState() {
         map[colEl.dataset.id] = tasksContainer;
       }
     });
-    
+
     // Размещаем задачи
     if (data.tasks && Array.isArray(data.tasks)) {
       data.tasks.forEach((task) => {
@@ -472,7 +496,7 @@ async function loadState() {
           console.warn('Пропущена задача с недопустимыми данными:', task);
           return;
         }
-        
+
         const container = map[task.column_id];
         if (container) {
           const taskDOM = createTaskDOM(task);
@@ -527,6 +551,7 @@ function applyRoleRestrictions() {
   // Показываем или скрываем статические кнопки
   if (addColumnBtn) addColumnBtn.style.display = isAdminView ? '' : 'none';
   if (timerSettingsBtn) timerSettingsBtn.style.display = isAdminView ? '' : 'none';
+  if (addEventBtn) addEventBtn.style.display = isAdminView ? '' : 'none';
 
   // Показываем или скрываем кнопки внутри колонок и задач
   document.querySelectorAll('.delete-column,.delete-task,.add-task').forEach(el => {
@@ -557,10 +582,447 @@ function logout() {
   localStorage.removeItem('authKey');
   authKey = '';
   isAdmin = false;
-  
+
   // Очищаем доску и скрываем кнопки
   board.innerHTML = '';
   hideAuthedUI();
   showLogin();
 }
-logoutBtn.addEventListener('click', logout); 
+logoutBtn.addEventListener('click', logout);
+
+/* ================================================
+   События - функции
+================================================ */
+
+// Загрузка событий
+async function loadEvents() {
+  try {
+    const data = await apiFetch('/api/events');
+    currentEvents = data.events || [];
+  } catch (err) {
+    console.error('Ошибка при загрузке событий:', err);
+    currentEvents = [];
+  }
+}
+
+/* ================================================
+   Events Overview Rendering (главная страница)
+================================================ */
+function renderEventsOverview() {
+  if (!eventsOverview) return;
+  eventsOverview.innerHTML = '';
+  if (isAdmin) {
+    renderAdminEventsTable();
+  } else {
+    renderUserEventsList();
+  }
+}
+
+function renderAdminEventsTable() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const table = document.createElement('table');
+  table.className = 'admin-events-table';
+
+  // Первая строка – номера
+  const headerRow = document.createElement('tr');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const th = document.createElement('th');
+    th.textContent = String(d).padStart(2, '0');
+    headerRow.appendChild(th);
+  }
+  table.appendChild(headerRow);
+
+  // Вторая строка – содержимое (звёздочки на выходные)
+  const dataRow = document.createElement('tr');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const td = document.createElement('td');
+    const dateObj = new Date(year, month, d);
+    const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+    let dayEvents = currentEvents.filter(ev=>ev.date===new Date(year,month,d).toISOString().split('T')[0]);
+    if(dayEvents.length){
+      td.textContent=dayEvents[0].title;
+    } else if(isWeekend){
+      td.classList.add('weekend');
+      td.textContent='*';
+    }
+
+    // контекстное меню
+    td.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showCellContextMenu(e.pageX, e.pageY, td);
+    });
+
+    dataRow.appendChild(td);
+  }
+  table.appendChild(dataRow);
+  eventsOverview.appendChild(table);
+}
+
+let userEventsPage=0;
+function renderUserEventsList() {
+  if(eventsOverview) eventsOverview.innerHTML='';
+  const container=document.createElement('div');
+  container.className='user-events-container';
+  const viewport=document.createElement('div');
+  viewport.className='user-events-viewport';
+
+  const prevBtn=document.createElement('button');
+  prevBtn.className='events-nav prev';
+  prevBtn.textContent='◀';
+  const nextBtn=document.createElement('button');
+  nextBtn.className='events-nav next';
+  nextBtn.textContent='▶';
+  const STEP=2;
+  prevBtn.addEventListener('click',()=>{userEventsStart=Math.max(0,userEventsStart-STEP); renderUserEventsList();});
+  nextBtn.addEventListener('click',()=>{userEventsStart=Math.min(upcomingAll.length-12, userEventsStart+STEP); renderUserEventsList();});
+
+  const track=document.createElement('div');
+  track.className='user-events-list';
+
+  const upcoming=[...currentEvents]
+    .filter(ev=> new Date(ev.date)>=new Date())
+    .sort((a,b)=>a.date.localeCompare(b.date));
+
+  if (!upcoming.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'Ближайших событий нет';
+    wrapper.appendChild(empty);
+  } else {
+    upcoming.forEach(ev => {
+      const item = document.createElement('div');
+      item.className = 'user-events-item';
+      const dateEl = document.createElement('div');
+      dateEl.className = 'evt-date';
+      dateEl.textContent = new Date(ev.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      const titleEl = document.createElement('div');
+      titleEl.className='evt-title';
+      titleEl.textContent = ev.title;
+      item.appendChild(dateEl);
+      item.appendChild(titleEl);
+      track.appendChild(item);
+    });
+  }
+  viewport.appendChild(track);
+  container.appendChild(prevBtn);
+  container.appendChild(viewport);
+  container.appendChild(nextBtn);
+  eventsOverview.appendChild(container);
+
+  let colWidth;
+  const visibleCols=6;
+  function ensureColWidth(){
+    if(colWidth) return;
+    const card=track.querySelector('.user-events-item');
+    if(card) colWidth=card.offsetWidth+8; // gap
+  }
+  const step=1; // one column
+  let currentCol=0;
+  function updateNav(){
+    prevBtn.disabled=currentCol===0;
+    const totalCols=Math.ceil(upcoming.length/2);
+    nextBtn.disabled=currentCol+visibleCols>=totalCols;
+  }
+  function slide(dir){
+    ensureColWidth();
+    const totalCols=Math.ceil(upcoming.length/2);
+    currentCol=Math.min(Math.max(0,currentCol+dir), totalCols-visibleCols);
+    track.style.transform=`translateX(${-currentCol*colWidth}px)`;
+    updateNav();
+  }
+  prevBtn.addEventListener('click',()=>slide(-step));
+  nextBtn.addEventListener('click',()=>slide(step));
+  ensureColWidth();
+  updateNav();
+}
+
+/* =========== контекстное меню для ячеек =========== */
+function showCellContextMenu(x, y, cell) {
+  hideContextMenu();
+  contextMenuEl = document.createElement('div');
+  contextMenuEl.style.position = 'absolute';
+  contextMenuEl.style.left = x + 'px';
+  contextMenuEl.style.top = y + 'px';
+  contextMenuEl.style.background = 'var(--card-bg)';
+  contextMenuEl.style.border = '1px solid var(--border)';
+  contextMenuEl.style.borderRadius = '4px';
+  contextMenuEl.style.zIndex = 2000;
+  contextMenuEl.style.minWidth = '120px';
+  const options = [
+    { label: '🟩 Зелёный', action: () => toggleCellColor(cell, 'color-green') },
+    { label: '🟥 Красный', action: () => toggleCellColor(cell, 'color-red') },
+    { label: '✏️ Редактировать', action: () => editCellEvent(cell) },
+    { label: '❌ Очистить', action: () => clearCell(cell) },
+  ];
+  options.forEach(opt => {
+    const div = document.createElement('div');
+    div.textContent = opt.label;
+    div.style.padding = '6px 8px';
+    div.style.cursor = 'pointer';
+    div.addEventListener('mouseover', () => div.style.background = 'var(--bg)');
+    div.addEventListener('mouseout', () => div.style.background = '');
+    div.addEventListener('click', () => { opt.action(); hideContextMenu(); });
+    contextMenuEl.appendChild(div);
+  });
+  document.body.appendChild(contextMenuEl);
+  document.addEventListener('click', hideContextMenu, { once: true });
+}
+
+function hideContextMenu() { if (contextMenuEl) { contextMenuEl.remove(); contextMenuEl = null; } }
+function toggleCellColor(cell, cls) { cell.classList.toggle(cls); }
+function clearCell(cell) { cell.classList.remove('color-green','color-red'); cell.textContent=''; }
+function editCellEvent(cell) {
+  const row = cell.parentElement;
+  if (!row || !row.previousSibling) return;
+  const day = Array.from(row.children).indexOf(cell) + 1;
+  if (!day) return;
+  const today = new Date();
+  const dateStr = new Date(today.getFullYear(), today.getMonth(), day).toISOString().split('T')[0];
+  openAddEventModal(dateStr);
+}
+
+// Переключение между доской и событиями
+function showEventsView() {
+  // расширенный календарь на 3 месяца
+  board.classList.add('hidden');
+  eventsSection.classList.remove('hidden');
+  loadEvents().then(()=>{
+    eventsCalendar.innerHTML='';
+    const offsets=[-1,0,1];
+    offsets.forEach(off=>{
+      const wrapper=document.createElement('div');
+      wrapper.style.marginBottom='32px';
+      eventsCalendar.appendChild(wrapper);
+      renderEventsCalendar(wrapper,off);
+    });
+  });
+}
+
+// пересборка трёхмесячного календаря
+function rebuildEventsCalendar(){
+  if(!eventsCalendar) return;
+  eventsCalendar.innerHTML='';
+  [-1,0,1].forEach(off=>{
+    const wrapper=document.createElement('div');
+    wrapper.style.marginBottom='32px';
+    eventsCalendar.appendChild(wrapper);
+    renderEventsCalendar(wrapper,off);
+  });
+}
+
+// новая сигнатура: parent element + month offset
+function renderEventsCalendar(parentEl, offset=0){
+  const today=new Date();
+  const baseMonth=new Date(today.getFullYear(), today.getMonth()+offset,1);
+  const currentMonth=baseMonth.getMonth();
+  const currentYear=baseMonth.getFullYear();
+  const monthName=baseMonth.toLocaleString('ru-RU',{month:'long', year:'numeric'});
+  const title=document.createElement('h3');
+  title.textContent=monthName;
+  parentEl.appendChild(title);
+
+  const calendarGrid=document.createElement('div');
+  calendarGrid.className='events-calendar';
+  parentEl.appendChild(calendarGrid);
+
+  // далее старая логика генерации дней, но в grid calendarGrid
+  const firstDay=new Date(currentYear,currentMonth,1);
+  const lastDay=new Date(currentYear,currentMonth+1,0);
+  const startDate=new Date(firstDay);
+  startDate.setDate(startDate.getDate()-(firstDay.getDay()===0?6:firstDay.getDay()-1));
+  const endDate=new Date(lastDay);
+  endDate.setDate(endDate.getDate()+(7-lastDay.getDay())%7);
+  const dayHeaders=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  dayHeaders.forEach(d=>{
+    const h=document.createElement('div');
+    h.className='calendar-header';
+    h.textContent=d;
+    calendarGrid.appendChild(h);
+  });
+  const cur=new Date(startDate);
+  while(cur<=endDate){
+     const dayEl=createCalendarDay(cur,currentMonth);
+     calendarGrid.appendChild(dayEl);
+     cur.setDate(cur.getDate()+1);
+   }
+}
+
+function showBoardView() {
+  eventsSection.classList.add('hidden');
+  board.classList.remove('hidden');
+}
+
+
+
+// Создание элемента дня календаря
+function createCalendarDay(date, currentMonth) {
+  const dayEl = document.createElement('div');
+  dayEl.className = 'calendar-day';
+
+  const isCurrentMonth = date.getMonth() === currentMonth;
+  const isToday = date.toDateString() === new Date().toDateString();
+
+  if (!isCurrentMonth) {
+    dayEl.classList.add('other-month');
+  }
+  if (isToday) {
+    dayEl.classList.add('today');
+  }
+
+  // Номер дня
+  const dayNumber = document.createElement('div');
+  dayNumber.className = 'day-number';
+  dayNumber.textContent = date.getDate();
+  dayEl.appendChild(dayNumber);
+
+  // Контейнер для событий
+  const eventsContainer = document.createElement('div');
+  eventsContainer.className = 'day-events';
+
+  // Находим события для этого дня
+  const dateStr = date.toISOString().split('T')[0];
+  const dayEvents = currentEvents.filter(event => event.date === dateStr);
+
+  dayEvents.forEach(event => {
+    const eventEl = document.createElement('div');
+    eventEl.className = 'event-item';
+    if (isAdmin) {
+      eventEl.classList.add('admin-mode');
+    }
+    eventEl.textContent = event.title;
+    eventEl.title = event.description || event.title;
+
+    if (isAdmin) {
+      eventEl.addEventListener('click', () => openEditEventModal(event));
+    }
+
+    eventsContainer.appendChild(eventEl);
+  });
+
+  // Кнопка добавления события (только для админа)
+  if (isAdmin && isCurrentMonth) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-event-day';
+    addBtn.textContent = '+ Событие';
+    addBtn.addEventListener('click', () => openAddEventModal(dateStr));
+    eventsContainer.appendChild(addBtn);
+  }
+
+  dayEl.appendChild(eventsContainer);
+  return dayEl;
+}
+
+// Открытие модального окна для добавления события
+function openAddEventModal(date = '') {
+  editingEventId = null;
+  eventModalTitle.textContent = 'Добавить событие';
+  eventDate.value = date;
+  eventTitle.value = '';
+  eventDescription.value = '';
+  eventModal.classList.remove('hidden');
+}
+
+// Открытие модального окна для редактирования события
+function openEditEventModal(event) {
+  editingEventId = event.id;
+  eventModalTitle.textContent = 'Редактировать событие';
+  eventDate.value = event.date;
+  eventTitle.value = event.title;
+  eventDescription.value = event.description || '';
+  eventModal.classList.remove('hidden');
+}
+
+// Закрытие модального окна события
+function closeEventModal() {
+  eventModal.classList.add('hidden');
+  editingEventId = null;
+}
+
+// Сохранение события
+async function saveEvent() {
+  const date = eventDate.value;
+  const title = eventTitle.value.trim();
+  const description = eventDescription.value.trim();
+
+  if (!date || !title) {
+    alert('Пожалуйста, заполните дату и название события.');
+    return;
+  }
+
+  try {
+    if (editingEventId) {
+      // Редактирование
+      await apiFetch(`/api/events/${editingEventId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ date, title, description }),
+      });
+    } else {
+      // Добавление
+      await apiFetch('/api/events', {
+        method: 'POST',
+        body: JSON.stringify({ date, title, description }),
+      });
+    }
+
+    closeEventModal();
+    await loadEvents();
+    rebuildEventsCalendar();
+    renderEventsOverview();
+  } catch (err) {
+    console.error('Ошибка при сохранении события:', err);
+    alert('Произошла ошибка при сохранении события.');
+  }
+}
+
+// Удаление события
+async function deleteEvent(eventId) {
+  if (!confirm('Удалить это событие?')) return;
+
+  try {
+    await apiFetch(`/api/events/${eventId}`, { method: 'DELETE' });
+    await loadEvents();
+    rebuildEventsCalendar();
+    renderEventsOverview();
+  } catch (err) {
+    console.error('Ошибка при удалении события:', err);
+    alert('Произошла ошибка при удалении события.');
+  }
+}
+
+/* ================================================
+   События - обработчики
+================================================ */
+
+eventsBtn.addEventListener('click', showEventsView);
+backToBoardBtn.addEventListener('click', showBoardView);
+addEventBtn.addEventListener('click', () => openAddEventModal());
+saveEventBtn.addEventListener('click', saveEvent);
+cancelEventBtn.addEventListener('click', closeEventModal);
+
+// Закрытие модального окна по клику вне его
+eventModal.addEventListener('click', (e) => {
+  if (e.target === eventModal) closeEventModal();
+});
+
+// Обработка Enter в полях формы
+eventTitle.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveEvent();
+});
+
+// Добавляем контекстное меню для удаления событий (только для админа)
+document.addEventListener('contextmenu', (e) => {
+  if (!isAdmin) return;
+
+  const eventItem = e.target.closest('.event-item');
+  if (eventItem) {
+    e.preventDefault();
+    const eventTitle = eventItem.textContent;
+    const event = currentEvents.find(ev => ev.title === eventTitle);
+    if (event && confirm(`Удалить событие "${event.title}"?`)) {
+      deleteEvent(event.id);
+    }
+  }
+});

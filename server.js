@@ -115,6 +115,53 @@ app.put('/api/columns/:id', auth, requireAdmin, async (req, res) => {
   }
 });
 
+/**************** EVENTS ****************/
+app.get('/api/events', auth, async (req, res) => {
+  try {
+    const events = await all('SELECT * FROM events ORDER BY date');
+    res.json({ events });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/events', auth, requireAdmin, async (req, res) => {
+  const { date, title, description } = req.body;
+  if (!date || !title) return res.status(400).json({ error: 'date & title required' });
+  try {
+    const info = await run('INSERT INTO events (date, title, description) VALUES (?, ?, ?)', [date, title, description || '']);
+    res.json({ id: info.lastID, date, title, description });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/events/:id', auth, requireAdmin, async (req, res) => {
+  const { date, title, description } = req.body;
+  const sets = [];
+  const params = [];
+  if (date !== undefined) { sets.push('date=?'); params.push(date); }
+  if (title !== undefined) { sets.push('title=?'); params.push(title); }
+  if (description !== undefined) { sets.push('description=?'); params.push(description); }
+  if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+  params.push(req.params.id);
+  try {
+    await run(`UPDATE events SET ${sets.join(',')} WHERE id=?`, params);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/events/:id', auth, requireAdmin, async (req, res) => {
+  try {
+    await run('DELETE FROM events WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /**************** TASKS ****************/
 app.post('/api/tasks', auth, requireAdmin, async (req, res) => {
   const { title, column_id } = req.body;

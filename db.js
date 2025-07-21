@@ -1,27 +1,29 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const fs = require('fs');
 
 const dbPath = path.join(__dirname, 'tasks.db');
-const exists = fs.existsSync(dbPath);
 const db = new sqlite3.Database(dbPath);
 
-// Инициализация схемы при первом запуске
-if (!exists) {
-  db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS columns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      position INTEGER NOT NULL DEFAULT 0
-    );`);
-    db.run(`CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      column_id INTEGER NOT NULL,
-      created_at INTEGER NOT NULL,
-      position INTEGER NOT NULL DEFAULT 0
-    );`);
-  });
-}
+// Инициализация/миграция схемы (создание таблиц при отсутствии)
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS columns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );`);
+  db.run(`CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    column_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );`);
+  db.run(`CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,         /* ISO 8601 (YYYY-MM-DD) */
+    title TEXT NOT NULL,
+    description TEXT
+  );`);
+});
 
-module.exports = { db }; 
+module.exports = { db };

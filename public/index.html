@@ -10,11 +10,25 @@
     <header class="top-bar">
       <button id="addColumnBtn">➕ Категория</button>
       <button id="timerSettingsBtn">⏱️ Настройки таймера</button>
+      <button id="eventsBtn">📅 События</button>
       <button id="themeToggle">🌙</button>
       <button id="logoutBtn" class="hidden">🚪 Выход</button>
     </header>
 
+    <!-- Обзор событий (таблица для админа или список для пользователей) -->
+    <section id="eventsOverview" class="events-overview"></section>
+
     <main class="board" id="board"></main>
+
+    <!-- События по дням -->
+    <section id="eventsSection" class="events-section hidden">
+      <div class="events-header">
+        <h2>События на ближайший месяц</h2>
+        <button id="addEventBtn" class="hidden">➕ Добавить событие</button>
+        <button id="backToBoardBtn">← Назад к доске</button>
+      </div>
+      <div id="eventsCalendar" class="events-calendar"></div>
+    </section>
 
     <!-- Шаблон карточки задачи -->
     <template id="taskTemplate">
@@ -58,6 +72,29 @@
         <div class="modal-actions">
           <button id="saveSettings">Сохранить</button>
           <button id="closeSettings">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно добавления/редактирования события -->
+    <div id="eventModal" class="modal hidden">
+      <div class="modal-content">
+        <h3 id="eventModalTitle">Добавить событие</h3>
+        <label>
+          Дата:
+          <input type="date" id="eventDate" required />
+        </label>
+        <label>
+          Название:
+          <input type="text" id="eventTitle" placeholder="Название события" required />
+        </label>
+        <label>
+          Описание:
+          <textarea id="eventDescription" placeholder="Описание события" rows="3"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button id="saveEvent">Сохранить</button>
+          <button id="cancelEvent">Отмена</button>
         </div>
       </div>
     </div>
