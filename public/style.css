@@ -21,35 +21,36 @@ body {
 
 /* Тёмная тема */
 body.dark {
-  --accent: #2e7d32;
-  --accent-hover: #1b5e20;
+  --accent: #66bb6a;
+  --accent-hover: #4caf50;
   --bg: #121212;
   --card-bg: #1e1e1e;
-  --text: #e0e0e0;
-  --border: #333;
+  --text: #e8e8e8;
+  --border: #404040;
 }
 
 /* Добавляю специальные стили только для тёмной темы */
 body.dark .add-task {
   background-color: #262626; /* чуть светлее карточки для разделения */
-  color: #d0d0d0;
-  border-top: 1px solid #333;
+  color: #e8e8e8;
+  border-top: 1px solid #404040;
 }
 body.dark .add-task:hover {
   background-color: #303030;
+  color: #f0f0f0;
 }
 
 body.dark .delete-column,
 body.dark .delete-task {
-  color: #888;
+  color: #b0b0b0;
 }
 body.dark .delete-column:hover,
 body.dark .delete-task:hover {
-  color: #bbb;
+  color: #e8e8e8;
 }
 
 body.dark .column-header {
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #404040;
 }
 
 .top-bar {
@@ -162,6 +163,15 @@ body:not(.dark) .add-task:hover {
   justify-content: flex-end;
   font-size: 12px;
   color: #666;
+}
+
+/* Тёмная тема для текста в футере задач */
+body.dark .task-footer {
+  color: #aaa;
+}
+
+body.dark .created-date {
+  color: #888;
 }
 
 .timer {
@@ -408,12 +418,27 @@ body:not(.dark) .add-task:hover {
 .admin-events-table td {
   border: 1px solid var(--border);
   padding: 4px;
+  color: var(--text);
 }
 .admin-events-table .weekend {
   background: #fff8ce; /* мягкий жёлтый */
 }
 .admin-events-table .color-green { background:#c8e6c9; }
 .admin-events-table .color-red { background:#ffcdd2; }
+
+/* Тёмная тема для таблицы событий */
+body.dark .admin-events-table .weekend {
+  background: #3d3d1a;
+  color: #e8e8e8;
+}
+body.dark .admin-events-table .color-green { 
+  background: #2d4a2d; 
+  color: #e8e8e8;
+}
+body.dark .admin-events-table .color-red { 
+  background: #4a2d2d; 
+  color: #e8e8e8;
+}
 
 /* User list */
 .user-events-container{display:flex;align-items:center;gap:8px;width:100%;}
@@ -469,9 +494,15 @@ body.dark .modal-content {
 
 body.dark .modal-content input,
 body.dark .modal-content textarea {
-  background-color: var(--bg);
-  color: var(--text);
-  border-color: var(--border);
+  background-color: #2a2a2a;
+  color: #e8e8e8;
+  border-color: #505050;
+}
+
+body.dark .modal-content input:focus,
+body.dark .modal-content textarea:focus {
+  border-color: #66bb6a;
+  outline: none;
 }
 
 /* Адаптивность календаря */
