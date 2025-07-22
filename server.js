@@ -110,8 +110,10 @@ app.get('/api/state', auth, async (req, res) => {
   try {
     const columns = await all('SELECT * FROM columns ORDER BY position, id');
     const tasks = await all('SELECT * FROM tasks ORDER BY position, id');
+    console.log('Отправляем колонки:', columns.map(c => `${c.title}(pos:${c.position})`).join(', '));
     res.json({ columns, tasks });
   } catch (e) {
+    console.error('Error loading state:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -157,11 +159,18 @@ app.post('/api/columns/reorder', auth, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'ids array required' });
   }
   
+  console.log('Получили запрос на изменение порядка колонок:', ids);
+  
   try {
     // Обновляем позицию каждой колонки
     for (let i = 0; i < ids.length; i++) {
+      console.log(`Устанавливаем позицию ${i} для колонки ${ids[i]}`);
       await run('UPDATE columns SET position = ? WHERE id = ?', [i, ids[i]]);
     }
+    
+    // Проверяем результат
+    const updatedColumns = await all('SELECT id, title, position FROM columns ORDER BY position');
+    console.log('Обновленный порядок в БД:', updatedColumns.map(c => `${c.title}(pos:${c.position})`).join(', '));
     
     res.json({ success: true });
   } catch (e) {

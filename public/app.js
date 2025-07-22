@@ -204,8 +204,6 @@ function createColumnDOM({ id, title }) {
       return null;
     }
 
-    // Дополнительная отладка: что внутри шаблона?
-    console.log('Отладка шаблона колонки:', columnTemplate.innerHTML);
 
 
     const columnClone = columnTemplate.content.cloneNode(true);
@@ -264,14 +262,25 @@ function createColumnDOM({ id, title }) {
 
     board.appendChild(columnEl); // ВАЖНО: добавляем сам элемент, а не DocumentFragment
 
-    // Drag & drop для колонок
-    columnEl.setAttribute('draggable', isAdmin ? 'true' : 'false');
+    // Drag & drop обработчики для колонок (draggable атрибут устанавливается в applyRoleRestrictions)
+    let isReorderInProgress = false;
     columnEl.addEventListener('dragstart', (e) => {
       e.dataTransfer.effectAllowed = 'move';
       columnEl.classList.add('dragging');
     });
-    columnEl.addEventListener('dragend', () => {
+    columnEl.addEventListener('dragend', async () => {
       columnEl.classList.remove('dragging');
+      if (!isAdmin || isReorderInProgress) return;
+      isReorderInProgress = true;
+      try {
+        const ids = Array.from(board.querySelectorAll('.column')).map(c => c.dataset.id);
+        await apiFetch('/api/columns/reorder', { method: 'POST', body: JSON.stringify({ ids }) });
+      } catch (err) {
+        console.error('Error saving column order:', err);
+        await loadState();
+      } finally {
+        isReorderInProgress = false;
+      }
     });
 
     // Возвращаем созданный элемент для единообразия
@@ -431,6 +440,8 @@ function getColumnAfterElement(container, x) {
 }
 
 // Глобальные обработчики для drag & drop колонок
+let dragOverTimeout = null;
+
 document.addEventListener('dragover', (e) => {
   // Проверяем, что перетаскиваем колонку
   const draggingColumn = board.querySelector('.column.dragging');
@@ -442,6 +453,12 @@ document.addEventListener('dragover', (e) => {
   
   e.preventDefault();
   
+  // Ограничиваем частоту перестановки колонок
+  if (dragOverTimeout) return;
+  dragOverTimeout = setTimeout(() => {
+    dragOverTimeout = null;
+  }, 10); // Ограничиваем до 100 раз в секунду
+  
   // Определяем позицию для вставки
   const afterElement = getColumnAfterElement(board, e.clientX);
   if (!afterElement) {
@@ -451,6 +468,8 @@ document.addEventListener('dragover', (e) => {
   }
 });
 
+let saveInProgress = false;
+
 document.addEventListener('drop', async (e) => {
   const draggingColumn = board.querySelector('.column.dragging');
   if (!draggingColumn || !isAdmin) return;
@@ -458,18 +477,28 @@ document.addEventListener('drop', async (e) => {
   e.preventDefault();
   draggingColumn.classList.remove('dragging');
   
+  // Предотвращаем множественные сохранения
+  if (saveInProgress) return;
+  saveInProgress = true;
+  
   try {
     // Сохраняем новый порядок на сервере
     const ids = Array.from(board.querySelectorAll('.column')).map(col => col.dataset.id);
-    await apiFetch('/api/columns/reorder', {
+    console.log('Сохраняем новый порядок колонок:', ids);
+    
+    const response = await apiFetch('/api/columns/reorder', {
       method: 'POST',
       body: JSON.stringify({ ids })
     });
-    console.log('Порядок колонок сохранен');
+    
+    console.log('Ответ сервера на сохранение порядка:', response);
+    console.log('Порядок колонок сохранен успешно');
   } catch (error) {
     console.error('Ошибка при сохранении порядка колонок:', error);
     // Перезагружаем состояние в случае ошибки
     await loadState();
+  } finally {
+    saveInProgress = false;
   }
 });
 
@@ -510,6 +539,17 @@ setInterval(updateTimers, 1000);
 ================================================ */
 let autoRefreshInterval = null;
 
+let lastUserActivity = Date.now();
+
+// Трекинг активности пользователя
+document.addEventListener('mousedown', () => {
+  lastUserActivity = Date.now();
+});
+
+document.addEventListener('dragstart', () => {
+  lastUserActivity = Date.now();
+});
+
 async function autoRefresh() {
   if (!authKey) return; // Не обновляем если не авторизованы
   
@@ -525,9 +565,22 @@ async function autoRefresh() {
       await checkForSounds();
     }
     
-    // Обновляем состояние доски только если она видима
-    if (!board.classList.contains('hidden')) {
+    // Обновляем состояние доски только если:
+    // 1. Доска видима
+    // 2. Нет активного перетаскивания
+    // 3. Пользователь не активен последние 3 секунды
+    // 4. Не админ (админы управляют состоянием сами)
+    const isDragging = board.querySelector('.column.dragging, .task.dragging');
+    const isUserActive = (Date.now() - lastUserActivity) < 3000;
+    
+    if (!board.classList.contains('hidden') && !isDragging && !isUserActive && !isAdmin) {
       await loadState();
+    } else if (isDragging) {
+      console.log('Пропускаем автообновление: активное перетаскивание');
+    } else if (isUserActive) {
+      console.log('Пропускаем автообновление: пользователь активен');
+    } else if (isAdmin) {
+      console.log('Пропускаем автообновление: администратор');
     }
     
     // Обновляем календари событий если они видимы
@@ -610,8 +663,12 @@ async function loadState() {
 
     board.innerHTML = '';
 
-    // Создаём колонки
-    data.columns.forEach((col) => {
+    // Создаём колонки в правильном порядке по position
+    const sortedColumns = data.columns
+      .sort((a, b) => (a.position || 0) - (b.position || 0)); // Сортируем по position
+    
+    
+    sortedColumns.forEach((col) => {
       if (col && col.id && col.title) {
         createColumnDOM(col);
       } else {
@@ -645,6 +702,9 @@ async function loadState() {
         }
       });
     }
+    
+    // Применяем ограничения ролей после загрузки
+    applyRoleRestrictions();
   } catch (err) {
     console.error('Ошибка при загрузке состояния:', err);
     alert('Произошла ошибка при загрузке данных. Попробуйте перезагрузить страницу.');
@@ -706,12 +766,21 @@ function applyRoleRestrictions() {
     el.style.display = isAdminView ? '' : 'none';
   });
 
-  // Включаем или отключаем перетаскивание
+  // Включаем или отключаем перетаскивание задач
   document.querySelectorAll('.task').forEach(t => {
     if (isAdminView) {
       t.setAttribute('draggable', 'true');
     } else {
       t.removeAttribute('draggable');
+    }
+  });
+
+  // Включаем или отключаем перетаскивание колонок
+  document.querySelectorAll('.column').forEach(col => {
+    if (isAdminView) {
+      col.setAttribute('draggable', 'true');
+    } else {
+      col.removeAttribute('draggable');
     }
   });
 
@@ -721,6 +790,9 @@ function applyRoleRestrictions() {
 
 function showAuthedUI() {
   logoutBtn.classList.remove('hidden');
+  // Показываем кнопки и доску после успешного входа
+  eventsBtn.style.display = '';
+  showBoardView();
 }
 function hideAuthedUI() {
   logoutBtn.classList.add('hidden');
@@ -736,6 +808,8 @@ function logout() {
   board.innerHTML = '';
   hideAuthedUI();
   showLogin();
+  // Перезагружаем страницу после выхода
+  window.location.reload();
 }
 logoutBtn.addEventListener('click', logout);
 
@@ -1576,3 +1650,11 @@ document.addEventListener('contextmenu', (e) => {
     }
   }
 });
+
+// Скрыть основной UI до авторизации
+board.classList.add('hidden');
+eventsSection.classList.add('hidden');
+addColumnBtn.style.display = 'none';
+timerSettingsBtn.style.display = 'none';
+eventsBtn.style.display = 'none';
+soundboardBtn.style.display = 'none';
