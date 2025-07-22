@@ -31,6 +31,10 @@ db.serialize(() => {
     original_name TEXT NOT NULL, /* Оригинальное имя файла */
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
   );`);
+  db.run(`CREATE TABLE IF NOT EXISTS admin_message (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    message TEXT NOT NULL DEFAULT ''
+  );`);
 });
 
 module.exports = { db };

@@ -562,6 +562,27 @@ async function autoRefresh() {
       await checkForSounds();
     }
     
+    // Синхронизируем админ-сообщение для всех пользователей
+    try {
+      const msgData = await apiFetch('/api/admin-message');
+      const serverMessage = msgData.message || '';
+      const currentMessage = adminMessageDisplay.textContent;
+      
+      // Обновляем только если сообщение изменилось и сейчас не редактируется
+      if (serverMessage !== currentMessage && !adminMessageDisplay.classList.contains('editing')) {
+        adminMessageDisplay.textContent = serverMessage;
+        
+        if (serverMessage.trim()) {
+          document.body.classList.add('has-admin-message');
+        } else {
+          document.body.classList.remove('has-admin-message');
+        }
+        applyAdminMessageUI();
+      }
+    } catch (e) {
+      // Игнорируем ошибки синхронизации админ-сообщения
+    }
+    
     // Обновляем состояние доски только если:
     // 1. Доска видима
     // 2. Нет активного перетаскивания
@@ -686,6 +707,18 @@ async function loadState() {
         } else {
         }
       });
+    }
+    
+    // Загружаем админ-сообщение из состояния
+    if (data.adminMessage !== undefined) {
+      adminMessageDisplay.textContent = data.adminMessage;
+      // Управляем классами body для отступов
+      if (data.adminMessage.trim()) {
+        document.body.classList.add('has-admin-message');
+      } else {
+        document.body.classList.remove('has-admin-message');
+      }
+      applyAdminMessageUI();
     }
     
     // Применяем ограничения ролей после загрузки
@@ -1638,20 +1671,35 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 // Загрузка и отображение admin-сообщения
-function loadAdminMessage() {
-  const msg = localStorage.getItem('adminMessage') || '';
-  adminMessageDisplay.textContent = msg;
-  // adminMessageInput removed; display only
-  
-  // Управляем классами body для отступов
-  if (msg.trim()) {
-    document.body.classList.add('has-admin-message');
-  } else {
-    document.body.classList.remove('has-admin-message');
+async function loadAdminMessage() {
+  try {
+    // Загружаем сообщение с сервера
+    const data = await apiFetch('/api/admin-message');
+    const msg = data.message || '';
+    adminMessageDisplay.textContent = msg;
+    
+    // Управляем классами body для отступов
+    if (msg.trim()) {
+      document.body.classList.add('has-admin-message');
+    } else {
+      document.body.classList.remove('has-admin-message');
+    }
+    
+    // Apply UI logic after loading message
+    applyAdminMessageUI();
+  } catch (e) {
+    // Fallback to localStorage if server request fails
+    const msg = localStorage.getItem('adminMessage') || '';
+    adminMessageDisplay.textContent = msg;
+    
+    if (msg.trim()) {
+      document.body.classList.add('has-admin-message');
+    } else {
+      document.body.classList.remove('has-admin-message');
+    }
+    
+    applyAdminMessageUI();
   }
-  
-  // Apply UI logic after loading message
-  applyAdminMessageUI();
 }
 
 // Показываем или скрываем админский ввод
@@ -1680,15 +1728,36 @@ let adminSaveTimeout;
 adminMessageDisplay.addEventListener('input', () => {
   clearTimeout(adminSaveTimeout);
   adminMessageDisplay.classList.add('editing');
-  adminSaveTimeout = setTimeout(() => {
+  adminSaveTimeout = setTimeout(async () => {
     const msg = adminMessageDisplay.textContent.trim();
-    localStorage.setItem('adminMessage', msg);
-    // Update body padding
-    if (msg) document.body.classList.add('has-admin-message');
-    else document.body.classList.remove('has-admin-message');
-    adminMessageDisplay.classList.remove('editing');
-    // Update UI visibility
-    applyAdminMessageUI();
+    
+    try {
+      // Сохраняем на сервере
+      await apiFetch('/api/admin-message', {
+        method: 'PUT',
+        body: JSON.stringify({ message: msg })
+      });
+      
+      // Также сохраняем в localStorage как fallback
+      localStorage.setItem('adminMessage', msg);
+      
+      // Update body padding
+      if (msg) document.body.classList.add('has-admin-message');
+      else document.body.classList.remove('has-admin-message');
+      
+      adminMessageDisplay.classList.remove('editing');
+      // Update UI visibility
+      applyAdminMessageUI();
+    } catch (e) {
+      // Если ошибка сервера, сохраняем только в localStorage
+      localStorage.setItem('adminMessage', msg);
+      
+      if (msg) document.body.classList.add('has-admin-message');
+      else document.body.classList.remove('has-admin-message');
+      
+      adminMessageDisplay.classList.remove('editing');
+      applyAdminMessageUI();
+    }
   }, 1000);
 });
 

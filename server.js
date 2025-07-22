@@ -111,7 +111,9 @@ app.get('/api/state', auth, async (req, res) => {
     const columns = await all('SELECT * FROM columns ORDER BY position, id');
     const tasks = await all('SELECT * FROM tasks ORDER BY position, id');
     const events = await all('SELECT * FROM events ORDER BY date');
-    res.json({ columns, tasks, events, role: req.role });
+    const adminMessageRow = await get('SELECT message FROM admin_message WHERE id = 1');
+    const adminMessage = adminMessageRow ? adminMessageRow.message : '';
+    res.json({ columns, tasks, events, adminMessage, role: req.role });
   } catch (e) {
     console.error('Error loading state:', e);
     res.status(500).json({ error: e.message });
@@ -370,6 +372,33 @@ app.get('/api/sound/check', auth, async (req, res) => {
     cleanOldSounds();
     const newSounds = soundCommands.filter(cmd => cmd.timestamp > since);
     res.json({ sounds: newSounds });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**************** ADMIN MESSAGE ****************/
+// Получить админ-сообщение
+app.get('/api/admin-message', auth, async (req, res) => {
+  try {
+    const message = await get('SELECT message FROM admin_message WHERE id = 1');
+    res.json({ message: message ? message.message : '' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Сохранить админ-сообщение (только админ)
+app.put('/api/admin-message', auth, requireAdmin, async (req, res) => {
+  const { message } = req.body;
+  if (message === undefined) {
+    return res.status(400).json({ error: 'message is required' });
+  }
+  
+  try {
+    // Используем INSERT OR REPLACE для обновления записи с id=1
+    await run('INSERT OR REPLACE INTO admin_message (id, message) VALUES (1, ?)', [message]);
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
