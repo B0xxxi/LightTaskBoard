@@ -875,19 +875,22 @@ body.dark .modal-content textarea:focus {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 12px 20px;
-  background-color: var(--card-bg);
-  border-top: 1px solid var(--border);
-  color: var(--text);
-  font-size: 14px;
+  padding: 16px 20px;
+  background-color: #0a0a0a;
+  border-top: 3px solid #00ff41;
+  color: #00ff41;
+  font-size: 18px;
+  font-weight: bold;
   line-height: 1.4;
   white-space: pre-wrap;
   word-wrap: break-word;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  box-shadow: 0 -4px 20px rgba(0, 255, 65, 0.3);
   z-index: 100;
   max-height: 120px;
   overflow-y: auto;
   transition: all 0.3s ease;
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
 }
 
 .admin-message-display.admin-editable {
@@ -897,19 +900,34 @@ body.dark .modal-content textarea:focus {
 
 .admin-message-display.admin-editable:hover,
 .admin-message-display.admin-editable:focus {
-  outline: 2px dashed var(--accent);
-  background-color: var(--bg);
+  outline: 2px dashed #00ff41;
+  background-color: #0f0f0f;
+  box-shadow: 0 -4px 25px rgba(0, 255, 65, 0.5);
 }
 
 .admin-message-display.editing {
-  background-color: rgba(255, 235, 59, 0.2); /* Subtle yellow background while typing */
+  background-color: #0f0f0f;
+  box-shadow: 0 -4px 30px rgba(0, 255, 65, 0.7);
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { 
+    box-shadow: 0 -4px 30px rgba(0, 255, 65, 0.7);
+    text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+  }
+  50% { 
+    box-shadow: 0 -4px 35px rgba(0, 255, 65, 0.9);
+    text-shadow: 0 0 15px rgba(0, 255, 65, 0.8);
+  }
 }
 
 .admin-message-display.admin-editable:empty::before {
   content: 'Нажмите для ввода сообщения администратора...';
-  color: var(--text);
-  opacity: 0.5;
+  color: #00ff41;
+  opacity: 0.6;
   font-style: italic;
+  font-weight: normal;
 }
 
 /* Добавляем отступ снизу для основного контента, чтобы сообщение не перекрывало */
@@ -944,8 +962,9 @@ body.dark .admin-message-section textarea:focus {
 }
 
 body.dark .admin-message-display {
-  background-color: var(--card-bg);
-  color: var(--text);
-  border-top-color: var(--border);
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+  background-color: #0a0a0a;
+  color: #00ff41;
+  border-top-color: #00ff41;
+  box-shadow: 0 -4px 20px rgba(0, 255, 65, 0.3);
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
 }
