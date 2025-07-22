@@ -887,10 +887,32 @@ body.dark .modal-content textarea:focus {
   z-index: 100;
   max-height: 120px;
   overflow-y: auto;
+  transition: all 0.3s ease;
+}
+
+.admin-message-display.admin-editable {
+  outline: 2px dashed transparent;
+  transition: outline 0.3s ease;
+}
+
+.admin-message-display.admin-editable:hover,
+.admin-message-display.admin-editable:focus {
+  outline: 2px dashed var(--accent);
+  background-color: var(--bg);
+}
+
+.admin-message-display.editing {
+  background-color: rgba(255, 235, 59, 0.2); /* Subtle yellow background while typing */
 }
 
 .admin-message-display:empty {
   display: none;
+}
+.admin-message-display.admin-editable:empty::before {
+  content: 'Нажмите для ввода сообщения администратора...';
+  color: var(--text);
+  opacity: 0.5;
+  font-style: italic;
 }
 
 /* Добавляем отступ снизу для основного контента, чтобы сообщение не перекрывало */

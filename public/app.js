@@ -10,7 +10,6 @@ const taskTemplate = document.getElementById('taskTemplate');
 
 // Проверка доступности шаблонов - без них работа невозможна
 if(!columnTemplate || !taskTemplate || !board) {
-  console.error('Критическая ошибка: шаблоны не найдены');
   alert('Не удалось загрузить шаблоны. Перезагрузите страницу.');
 }
 
@@ -31,9 +30,6 @@ const themeToggle = document.getElementById('themeToggle');
 
 const logoutBtn = document.getElementById('logoutBtn');
 // Админское сообщение
-const adminMessageSection = document.getElementById('adminMessageSection');
-const adminMessageInput = document.getElementById('adminMessageInput');
-const saveAdminMessageBtn = document.getElementById('saveAdminMessageBtn');
 const adminMessageDisplay = document.getElementById('adminMessageDisplay');
 
 // Саундборд
@@ -104,32 +100,39 @@ async function apiFetch(url, opts = {}) {
   return response.json();
 }
 
-async function attemptLogin(key) {
-  // после успешного логина позже вызовем загрузку событий и отрисовку
-
+async function attemptLogin(key, silent = false) {
+  // Try login API
+  let resp;
   try {
-    const resp = await apiFetch('/api/login', {
+    resp = await apiFetch('/api/login', {
       method: 'POST',
       body: JSON.stringify({ key }),
       headers: { 'Content-Type': 'application/json' },
     });
-    authKey = key;
-    localStorage.setItem('authKey', key);
-    isAdmin = resp.role === 'admin';
-    lastSoundCheck = Date.now(); // Инициализируем проверку звуков
-      await loadEvents();
-      renderEventsOverview();
-    hideLogin();
-    await loadState();
-    applyRoleRestrictions();
-    showAuthedUI();
-    startAutoRefresh(); // Запускаем автообновление после успешного входа
   } catch (e) {
     console.error('login-error', e);
     localStorage.removeItem('authKey');
-    authKey='';
-    alert('Неверный пароль или ключ.');
+    authKey = '';
+    if (!silent) alert('Неверный пароль или ключ.');
+    return;
   }
+  // On successful login
+  authKey = key;
+  localStorage.setItem('authKey', key);
+  isAdmin = resp.role === 'admin';
+  lastSoundCheck = Date.now(); // Инициализируем проверку звуков
+  hideLogin();
+  // Post-login data loading
+  try {
+    await loadEvents();
+    renderEventsOverview();
+    await loadState();
+  } catch (e) {
+    console.error('post-login load error', e);
+  }
+  applyRoleRestrictions();
+  showAuthedUI();
+  startAutoRefresh(); // Запускаем автообновление после успешного входа
 }
 
 function showLogin() {
@@ -141,7 +144,7 @@ function hideLogin() {
 
 loginBtn.addEventListener('click', () => {
   const key = passwordInput.value.trim();
-  attemptLogin(key);
+  attemptLogin(key, false);
 });
 passwordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') loginBtn.click();
@@ -161,13 +164,15 @@ passwordInput.addEventListener('keydown', (e) => {
   });
 });
 fileDrop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileDrop.classList.remove('dragover');
   const file = e.dataTransfer.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
     try {
       const json = JSON.parse(ev.target.result);
-      if (json.key) attemptLogin(json.key);
+      if (json.key) attemptLogin(json.key, false);
       else alert('Ключ не найден в файле.');
     } catch (err) {
       alert('Некорректный JSON файл.');
@@ -195,7 +200,8 @@ keyFileInput.addEventListener('change', (e) => {
 
 /* Проверяем токен из localStorage */
 if (authKey) {
-  attemptLogin(authKey);
+  // Silent auto-login to avoid error alert on page load
+  attemptLogin(authKey, true);
 } else {
   showLogin();
 }
@@ -206,7 +212,6 @@ if (authKey) {
 function createColumnDOM({ id, title }) {
   try {
     if (!columnTemplate || !columnTemplate.content) {
-      console.error('Критическая ошибка: Шаблон колонки (columnTemplate) не найден или пуст.');
       return null;
     }
 
@@ -216,10 +221,8 @@ function createColumnDOM({ id, title }) {
     const columnEl = columnClone.querySelector('.column');
 
     if (!columnEl) {
-      console.error('Не удалось найти элемент ".column" в клоне шаблона.', columnClone);
       // Попробуем найти его другим способом для отладки
       const childNodes = Array.from(columnClone.childNodes).map(n => n.nodeName);
-      console.log('Дочерние узлы в клоне:', childNodes);
       return null;
     }
 
@@ -229,7 +232,6 @@ function createColumnDOM({ id, title }) {
     const tasksContainer = columnClone.querySelector('.tasks');
 
     if (!titleEl || !deleteBtn || !addTaskBtn || !tasksContainer) {
-      console.error('Структура шаблона колонки некорректна, один из элементов не найден');
       return null;
     }
 
@@ -282,7 +284,6 @@ function createColumnDOM({ id, title }) {
         const ids = Array.from(board.querySelectorAll('.column')).map(c => c.dataset.id);
         await apiFetch('/api/columns/reorder', { method: 'POST', body: JSON.stringify({ ids }) });
       } catch (err) {
-        console.error('Error saving column order:', err);
         await loadState();
       } finally {
         isReorderInProgress = false;
@@ -293,7 +294,6 @@ function createColumnDOM({ id, title }) {
     return columnEl;
 
   } catch (error) {
-    console.error('Ошибка при создании DOM элемента колонки:', error);
     return null;
   }
 }
@@ -304,14 +304,12 @@ function createColumnDOM({ id, title }) {
 function createTaskDOM({ id, title, created_at }) {
   try {
     if (!taskTemplate) {
-      console.error('Шаблон задачи не инициализирован');
       return null;
     }
 
     const taskClone = taskTemplate.content.cloneNode(true);
     const taskEl = taskClone.querySelector('.task');
     if (!taskEl) {
-      console.error('Структура шаблона задачи некорректна');
       return null;
     }
 
@@ -333,7 +331,6 @@ function createTaskDOM({ id, title, created_at }) {
           // Обновляем title в памяти чтобы повторные blur не слали запросы
           title = newTitle; 
         } catch (err) {
-          console.error('Ошибка при обновлении задачи:', err);
           // опционально: вернуть старый текст или показать ошибку
           titleEl.textContent = title; 
         }
@@ -367,7 +364,6 @@ function createTaskDOM({ id, title, created_at }) {
 
     return taskClone;
   } catch (error) {
-    console.error('Ошибка при создании DOM элемента задачи:', error);
     return null;
   }
 }
@@ -490,17 +486,13 @@ document.addEventListener('drop', async (e) => {
   try {
     // Сохраняем новый порядок на сервере
     const ids = Array.from(board.querySelectorAll('.column')).map(col => col.dataset.id);
-    console.log('Сохраняем новый порядок колонок:', ids);
     
     const response = await apiFetch('/api/columns/reorder', {
       method: 'POST',
       body: JSON.stringify({ ids })
     });
     
-    console.log('Ответ сервера на сохранение порядка:', response);
-    console.log('Порядок колонок сохранен успешно');
   } catch (error) {
-    console.error('Ошибка при сохранении порядка колонок:', error);
     // Перезагружаем состояние в случае ошибки
     await loadState();
   } finally {
@@ -560,7 +552,6 @@ async function autoRefresh() {
   if (!authKey) return; // Не обновляем если не авторизованы
   
   try {
-    console.log('Автообновление данных...');
     
     // Обновляем события
     await loadEvents();
@@ -582,11 +573,8 @@ async function autoRefresh() {
     if (!board.classList.contains('hidden') && !isDragging && !isUserActive && !isAdmin) {
       await loadState();
     } else if (isDragging) {
-      console.log('Пропускаем автообновление: активное перетаскивание');
     } else if (isUserActive) {
-      console.log('Пропускаем автообновление: пользователь активен');
     } else if (isAdmin) {
-      console.log('Пропускаем автообновление: администратор');
     }
     
     // Обновляем календари событий если они видимы
@@ -594,9 +582,7 @@ async function autoRefresh() {
       rebuildEventsCalendar();
     }
     
-    console.log('Автообновление завершено');
   } catch (error) {
-    console.log('Автообновление пропущено:', error.message);
     // Не показываем ошибки автообновления пользователю
   }
 }
@@ -607,14 +593,12 @@ function startAutoRefresh() {
   }
   // Запускаем автообновление каждые 7.5 секунд
   autoRefreshInterval = setInterval(autoRefresh, 7500);
-  console.log('Автообновление запущено (каждые 7.5 секунд)');
 }
 
 function stopAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
     autoRefreshInterval = null;
-    console.log('Автообновление остановлено');
   }
 }
 
@@ -657,13 +641,11 @@ async function loadState() {
   try {
     // Проверяем, что все требуемые шаблоны существуют перед загрузкой
     if (!columnTemplate || !taskTemplate) {
-      console.error('Шаблоны не инициализированы. Отмена загрузки состояния.');
       return;
     }
 
     const data = await apiFetch('/api/state');
     if (!data || !data.columns) {
-      console.error('Неверные данные от API:', data);
       return;
     }
 
@@ -678,7 +660,6 @@ async function loadState() {
       if (col && col.id && col.title) {
         createColumnDOM(col);
       } else {
-        console.warn('Пропущена колонка с недопустимыми данными:', col);
       }
     });
 
@@ -695,7 +676,6 @@ async function loadState() {
     if (data.tasks && Array.isArray(data.tasks)) {
       data.tasks.forEach((task) => {
         if (!task || !task.id || !task.column_id) {
-          console.warn('Пропущена задача с недопустимыми данными:', task);
           return;
         }
 
@@ -704,7 +684,6 @@ async function loadState() {
           const taskDOM = createTaskDOM(task);
           if (taskDOM) container.appendChild(taskDOM);
         } else {
-          console.warn(`Контейнер для колонки ${task.column_id} не найден`);
         }
       });
     }
@@ -712,7 +691,6 @@ async function loadState() {
     // Применяем ограничения ролей после загрузки
     applyRoleRestrictions();
   } catch (err) {
-    console.error('Ошибка при загрузке состояния:', err);
     alert('Произошла ошибка при загрузке данных. Попробуйте перезагрузить страницу.');
   }
 }
@@ -796,11 +774,20 @@ function applyRoleRestrictions() {
 
 function showAuthedUI() {
   logoutBtn.classList.remove('hidden');
-  // Показываем кнопки и доску после успешного входа
   eventsBtn.style.display = '';
   showBoardView();
   applyAdminMessageUI();
   loadAdminMessage();
+  // Always show admin message block for admin
+  if (isAdmin) {
+    adminMessageDisplay.style.display = 'block';
+    // Add placeholder if empty
+    if (!adminMessageDisplay.textContent.trim()) {
+      adminMessageDisplay.textContent = '';
+      adminMessageDisplay.setAttribute('placeholder', 'Нажмите для ввода сообщения администратора...');
+      adminMessageDisplay.style.minHeight = '60px';
+    }
+  }
 }
 function hideAuthedUI() {
   logoutBtn.classList.add('hidden');
@@ -845,7 +832,6 @@ function playSound(soundName, isCustom = false) {
       const audio = new Audio(`/sounds/${soundName}`);
       audio.volume = 0.7;
       audio.play().catch(error => {
-        console.error('Ошибка воспроизведения кастомного звука:', error);
       });
       return;
     }
@@ -853,7 +839,6 @@ function playSound(soundName, isCustom = false) {
     // Встроенные звуки через Web Audio API
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) {
-      console.warn('Web Audio API не поддерживается в этом браузере');
       return;
     }
     
@@ -872,7 +857,6 @@ function playSound(soundName, isCustom = false) {
     
     const sound = sounds[soundName];
     if (!sound) {
-      console.warn(`Звук ${soundName} не найден`);
       return;
     }
     
@@ -915,7 +899,6 @@ function playSound(soundName, isCustom = false) {
       oscillator.stop(audioContext.currentTime + sound.duration / 1000);
     }
   } catch (error) {
-    console.error('Ошибка воспроизведения звука:', error);
   }
 }
 
@@ -932,9 +915,7 @@ async function broadcastSound(soundName, isCustom = false) {
         isCustom: isCustom 
       })
     });
-    console.log(`Звук ${soundName} отправлен всем пользователям`);
   } catch (err) {
-    console.error('Ошибка при отправке звука:', err);
   }
 }
 
@@ -946,14 +927,12 @@ async function checkForSounds() {
     const data = await apiFetch(`/api/sound/check?since=${lastSoundCheck}`);
     if (data.sounds && data.sounds.length > 0) {
       data.sounds.forEach(soundCommand => {
-        console.log(`Получен звук: ${soundCommand.sound}`);
         playSound(soundCommand.sound, soundCommand.isCustom);
         lastSoundCheck = Math.max(lastSoundCheck, soundCommand.timestamp);
       });
     }
   } catch (err) {
     // Тихо игнорируем ошибки проверки звуков
-    console.log('Проверка звуков пропущена:', err.message);
   }
 }
 
@@ -966,7 +945,6 @@ async function loadCustomSounds() {
     customSounds = data.sounds || [];
     renderCustomSounds();
   } catch (err) {
-    console.error('Ошибка при загрузке кастомных звуков:', err);
   }
 }
 
@@ -1055,7 +1033,6 @@ async function uploadCustomSound() {
     
     alert(`Звук "${name}" успешно загружен!`);
   } catch (err) {
-    console.error('Ошибка при загрузке звука:', err);
     alert(`Ошибка загрузки: ${err.message}`);
   } finally {
     uploadSoundBtn.disabled = false;
@@ -1073,9 +1050,7 @@ async function deleteCustomSound(soundId, soundName) {
     });
     
     await loadCustomSounds();
-    console.log(`Звук "${soundName}" удален`);
   } catch (err) {
-    console.error('Ошибка при удалении звука:', err);
     alert(`Ошибка удаления: ${err.message}`);
   }
 }
@@ -1114,7 +1089,6 @@ async function loadEvents() {
     const data = await apiFetch('/api/events');
     currentEvents = data.events || [];
   } catch (err) {
-    console.error('Ошибка при загрузке событий:', err);
     currentEvents = [];
   }
 }
@@ -1606,7 +1580,6 @@ async function saveEvent() {
     rebuildEventsCalendar();
     renderEventsOverview();
   } catch (err) {
-    console.error('Ошибка при сохранении события:', err);
     alert('Произошла ошибка при сохранении события.');
   }
 }
@@ -1621,7 +1594,6 @@ async function deleteEvent(eventId) {
     rebuildEventsCalendar();
     renderEventsOverview();
   } catch (err) {
-    console.error('Ошибка при удалении события:', err);
     alert('Произошла ошибка при удалении события.');
   }
 }
@@ -1671,7 +1643,7 @@ document.addEventListener('contextmenu', (e) => {
 function loadAdminMessage() {
   const msg = localStorage.getItem('adminMessage') || '';
   adminMessageDisplay.textContent = msg;
-  adminMessageInput.value = msg;
+  // adminMessageInput removed; display only
   
   // Управляем классами body для отступов
   if (msg.trim()) {
@@ -1683,15 +1655,19 @@ function loadAdminMessage() {
 
 // Показываем или скрываем админский ввод
 function applyAdminMessageUI() {
-  // Admin edits inline in display; hide textarea section always
-  adminMessageSection.classList.add('hidden');
+  // Admin edits inline in display
   if (isAdmin) {
-    // Make display editable
+    // Make display editable and always visible for admin
     adminMessageDisplay.setAttribute('contenteditable', 'true');
     adminMessageDisplay.classList.add('admin-editable');
+    adminMessageDisplay.style.display = 'block';
   } else {
     adminMessageDisplay.removeAttribute('contenteditable');
     adminMessageDisplay.classList.remove('admin-editable');
+    // Hide for non-admin if empty
+    if (!adminMessageDisplay.textContent.trim()) {
+      adminMessageDisplay.style.display = 'none';
+    }
   }
 }
 
