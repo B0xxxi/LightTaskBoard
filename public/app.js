@@ -30,6 +30,11 @@ const keyFileInput = document.getElementById('keyFileInput');
 const themeToggle = document.getElementById('themeToggle');
 
 const logoutBtn = document.getElementById('logoutBtn');
+// Админское сообщение
+const adminMessageSection = document.getElementById('adminMessageSection');
+const adminMessageInput = document.getElementById('adminMessageInput');
+const saveAdminMessageBtn = document.getElementById('saveAdminMessageBtn');
+const adminMessageDisplay = document.getElementById('adminMessageDisplay');
 
 // Саундборд
 const soundboardBtn = document.getElementById('soundboardBtn');
@@ -53,6 +58,7 @@ const eventDate = document.getElementById('eventDate');
 const eventTitle = document.getElementById('eventTitle');
 const eventDescription = document.getElementById('eventDescription');
 const saveEventBtn = document.getElementById('saveEvent');
+const deleteEventBtn = document.getElementById('deleteEvent');
 const cancelEventBtn = document.getElementById('cancelEvent');
 
 let currentEvents = [];
@@ -793,6 +799,8 @@ function showAuthedUI() {
   // Показываем кнопки и доску после успешного входа
   eventsBtn.style.display = '';
   showBoardView();
+  applyAdminMessageUI();
+  loadAdminMessage();
 }
 function hideAuthedUI() {
   logoutBtn.classList.add('hidden');
@@ -1546,6 +1554,7 @@ function openAddEventModal(date = '') {
   eventDate.value = date;
   eventTitle.value = '';
   eventDescription.value = '';
+  deleteEventBtn.classList.add('hidden'); // Скрываем кнопку удаления при добавлении
   eventModal.classList.remove('hidden');
 }
 
@@ -1556,6 +1565,7 @@ function openEditEventModal(event) {
   eventDate.value = event.date;
   eventTitle.value = event.title;
   eventDescription.value = event.description || '';
+  deleteEventBtn.classList.remove('hidden'); // Показываем кнопку удаления при редактировании
   eventModal.classList.remove('hidden');
 }
 
@@ -1624,6 +1634,12 @@ eventsBtn.addEventListener('click', showEventsView);
 backToBoardBtn.addEventListener('click', showBoardView);
 addEventBtn.addEventListener('click', () => openAddEventModal());
 saveEventBtn.addEventListener('click', saveEvent);
+deleteEventBtn.addEventListener('click', async () => {
+  if (editingEventId && confirm('Удалить это событие?')) {
+    await deleteEvent(editingEventId);
+    closeEventModal();
+  }
+});
 cancelEventBtn.addEventListener('click', closeEventModal);
 
 // Закрытие модального окна по клику вне его
@@ -1649,6 +1665,53 @@ document.addEventListener('contextmenu', (e) => {
       deleteEvent(event.id);
     }
   }
+});
+
+// Загрузка и отображение admin-сообщения
+function loadAdminMessage() {
+  const msg = localStorage.getItem('adminMessage') || '';
+  adminMessageDisplay.textContent = msg;
+  adminMessageInput.value = msg;
+  
+  // Управляем классами body для отступов
+  if (msg.trim()) {
+    document.body.classList.add('has-admin-message');
+  } else {
+    document.body.classList.remove('has-admin-message');
+  }
+}
+
+// Показываем или скрываем админский ввод
+function applyAdminMessageUI() {
+  // Admin edits inline in display; hide textarea section always
+  adminMessageSection.classList.add('hidden');
+  if (isAdmin) {
+    // Make display editable
+    adminMessageDisplay.setAttribute('contenteditable', 'true');
+    adminMessageDisplay.classList.add('admin-editable');
+  } else {
+    adminMessageDisplay.removeAttribute('contenteditable');
+    adminMessageDisplay.classList.remove('admin-editable');
+  }
+}
+
+// Сохранение admin-сообщения
+// Remove manual save button handler
+// saveAdminMessageBtn.addEventListener('click', ...);
+
+// Debounced inline save when admin stops typing
+let adminSaveTimeout;
+adminMessageDisplay.addEventListener('input', () => {
+  clearTimeout(adminSaveTimeout);
+  adminMessageDisplay.classList.add('editing');
+  adminSaveTimeout = setTimeout(() => {
+    const msg = adminMessageDisplay.textContent.trim();
+    localStorage.setItem('adminMessage', msg);
+    // Update body padding
+    if (msg) document.body.classList.add('has-admin-message');
+    else document.body.classList.remove('has-admin-message');
+    adminMessageDisplay.classList.remove('editing');
+  }, 1000);
 });
 
 // Скрыть основной UI до авторизации

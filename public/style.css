@@ -275,6 +275,15 @@ body.dark .created-date {
   color: var(--card-bg);
 }
 
+.modal-actions .delete-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.modal-actions .delete-btn:hover {
+  background-color: #d32f2f;
+}
+
 .file-drop {
   border: 2px dashed var(--border);
   padding: 20px;
@@ -810,3 +819,114 @@ body.dark .modal-content textarea:focus {
 }
 
 .hidden{display:none !important;}
+
+/* Админское сообщение */
+.admin-message-section {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.admin-message-section textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.admin-message-section textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.15);
+}
+
+.admin-message-section button {
+  padding: 6px 12px;
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+  float: right;
+}
+
+.admin-message-section button:hover {
+  background-color: var(--accent-hover);
+}
+
+.admin-message-display {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 20px;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.admin-message-display:empty {
+  display: none;
+}
+
+/* Добавляем отступ снизу для основного контента, чтобы сообщение не перекрывало */
+body {
+  padding-bottom: 0;
+}
+
+body.has-admin-message {
+  padding-bottom: 60px;
+}
+
+body.has-admin-input {
+  padding-bottom: 120px;
+}
+
+/* Тёмная тема для админского сообщения */
+body.dark .admin-message-section {
+  background-color: var(--card-bg);
+  border-top-color: var(--border);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+}
+
+body.dark .admin-message-section textarea {
+  background-color: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+body.dark .admin-message-section textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(102, 187, 106, 0.15);
+}
+
+body.dark .admin-message-display {
+  background-color: var(--card-bg);
+  color: var(--text);
+  border-top-color: var(--border);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+}

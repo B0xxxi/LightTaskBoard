@@ -20,6 +20,19 @@
     <section id="eventsOverview" class="events-overview"></section>
 
     <main class="board" id="board"></main>
+    <!-- Админское сообщение -->
+    <section id="adminMessageSection" class="admin-message-section hidden">
+      <textarea id="adminMessageInput" placeholder="Сообщение администратора"></textarea>
+      <button id="saveAdminMessageBtn">Сохранить сообщение</button>
+    </section>
+    <div id="adminMessageDisplay" class="admin-message-display"></div>
+
+    <!-- Сообщение администратора -->
+    <section id="adminMessageSection" class="admin-message-section hidden">
+      <textarea id="adminMessageInput" placeholder="Сообщение администратора"></textarea>
+      <button id="saveAdminMessageBtn">Сохранить сообщение</button>
+    </section>
+    <div id="adminMessageDisplay" class="admin-message-display"></div>
 
     <!-- События по дням -->
     <section id="eventsSection" class="events-section hidden">
@@ -95,6 +108,7 @@
         </label>
         <div class="modal-actions">
           <button id="saveEvent">Сохранить</button>
+          <button id="deleteEvent" class="delete-btn hidden">🗑️ Удалить</button>
           <button id="cancelEvent">Отмена</button>
         </div>
       </div>
@@ -156,4 +170,4 @@
 
     <script src="app.js"></script>
   </body>
-</html> 
+</html>
