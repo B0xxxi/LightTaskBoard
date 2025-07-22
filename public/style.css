@@ -905,9 +905,6 @@ body.dark .modal-content textarea:focus {
   background-color: rgba(255, 235, 59, 0.2); /* Subtle yellow background while typing */
 }
 
-.admin-message-display:empty {
-  display: none;
-}
 .admin-message-display.admin-editable:empty::before {
   content: 'Нажмите для ввода сообщения администратора...';
   color: var(--text);

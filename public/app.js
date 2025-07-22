@@ -776,11 +776,9 @@ function showAuthedUI() {
   logoutBtn.classList.remove('hidden');
   eventsBtn.style.display = '';
   showBoardView();
-  applyAdminMessageUI();
-  loadAdminMessage();
+  loadAdminMessage(); // This now calls applyAdminMessageUI internally
   // Always show admin message block for admin
   if (isAdmin) {
-    adminMessageDisplay.style.display = 'block';
     // Add placeholder if empty
     if (!adminMessageDisplay.textContent.trim()) {
       adminMessageDisplay.textContent = '';
@@ -1651,6 +1649,9 @@ function loadAdminMessage() {
   } else {
     document.body.classList.remove('has-admin-message');
   }
+  
+  // Apply UI logic after loading message
+  applyAdminMessageUI();
 }
 
 // Показываем или скрываем админский ввод
@@ -1664,10 +1665,9 @@ function applyAdminMessageUI() {
   } else {
     adminMessageDisplay.removeAttribute('contenteditable');
     adminMessageDisplay.classList.remove('admin-editable');
-    // Hide for non-admin if empty
-    if (!adminMessageDisplay.textContent.trim()) {
-      adminMessageDisplay.style.display = 'none';
-    }
+    // For non-admin: show if there's content, hide if empty
+    const hasContent = adminMessageDisplay.textContent.trim();
+    adminMessageDisplay.style.display = hasContent ? 'block' : 'none';
   }
 }
 
@@ -1687,6 +1687,8 @@ adminMessageDisplay.addEventListener('input', () => {
     if (msg) document.body.classList.add('has-admin-message');
     else document.body.classList.remove('has-admin-message');
     adminMessageDisplay.classList.remove('editing');
+    // Update UI visibility
+    applyAdminMessageUI();
   }, 1000);
 });
 
