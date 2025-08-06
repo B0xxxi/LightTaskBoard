@@ -20,6 +20,8 @@ const dangerInput = document.getElementById('dangerMinutes');
 const resetCheckbox = document.getElementById('resetOnMove');
 const saveSettingsBtn = document.getElementById('saveSettings');
 const closeSettingsBtn = document.getElementById('closeSettings');
+const marqueeEnabledInput = document.getElementById('marqueeEnabled');
+const marqueeSpeedInput = document.getElementById('marqueeSpeed');
 
 const loginModal = document.getElementById('loginModal');
 const passwordInput = document.getElementById('passwordInput');
@@ -71,6 +73,11 @@ let timerConfig = {
   baseFont: 12,
   increment: 6,
   resetOnMove: false,
+};
+
+let marqueeConfig = {
+    enabled: false,
+    speed: 15, // seconds
 };
 
 /* ================================================
@@ -624,12 +631,56 @@ function stopAutoRefresh() {
 }
 
 /* ================================================
+   Настройки бегущей строки
+================================================ */
+function loadMarqueeConfig() {
+    const saved = localStorage.getItem('marqueeConfig');
+    if (saved) {
+        marqueeConfig = JSON.parse(saved);
+    }
+}
+
+function applyMarqueeConfig() {
+    const isMarquee = marqueeConfig.enabled && adminMessageDisplay.textContent.trim();
+
+    if (isMarquee) {
+        if (!adminMessageDisplay.querySelector('.marquee-inner')) {
+            const inner = document.createElement('div');
+            inner.className = 'marquee-inner';
+            inner.textContent = adminMessageDisplay.textContent;
+            adminMessageDisplay.innerHTML = '';
+            adminMessageDisplay.appendChild(inner);
+        }
+        adminMessageDisplay.classList.add('marquee');
+        adminMessageDisplay.style.setProperty('--marquee-speed', `${marqueeConfig.speed}s`);
+    } else {
+        const inner = adminMessageDisplay.querySelector('.marquee-inner');
+        if (inner) {
+            adminMessageDisplay.textContent = inner.textContent;
+        }
+        adminMessageDisplay.classList.remove('marquee');
+    }
+}
+
+function saveMarqueeConfig() {
+    marqueeConfig.enabled = marqueeEnabledInput.checked;
+    const speed = parseInt(marqueeSpeedInput.value, 10);
+    if (speed > 0) {
+        marqueeConfig.speed = speed;
+    }
+    localStorage.setItem('marqueeConfig', JSON.stringify(marqueeConfig));
+    applyMarqueeConfig();
+}
+
+/* ================================================
    Модальное окно настроек таймера
 ================================================ */
 function openSettingsModal() {
   warnInput.value = timerConfig.warnSeconds / 60;
   dangerInput.value = timerConfig.dangerSeconds / 60;
   resetCheckbox.checked = timerConfig.resetOnMove;
+  marqueeEnabledInput.checked = marqueeConfig.enabled;
+  marqueeSpeedInput.value = marqueeConfig.speed;
   settingsModal.classList.remove('hidden');
 }
 function closeSettingsModal() {
@@ -645,6 +696,7 @@ saveSettingsBtn.addEventListener('click', () => {
     timerConfig.warnSeconds = warn * 60;
     timerConfig.dangerSeconds = danger * 60;
     timerConfig.resetOnMove = resetCheckbox.checked;
+    saveMarqueeConfig();
     closeSettingsModal();
   } else {
     alert('Проверьте введённые значения.');
@@ -754,6 +806,8 @@ themeToggle.addEventListener('click', () => {
   themeToggle.textContent = isDark ? '☀️' : '🌙';
 });
 applyStoredTheme();
+loadMarqueeConfig();
+applyMarqueeConfig();
 
 /* format date */
 function formatDate(ts) {
@@ -1714,9 +1768,11 @@ function applyAdminMessageUI() {
     adminMessageDisplay.removeAttribute('contenteditable');
     adminMessageDisplay.classList.remove('admin-editable');
     // For non-admin: show if there's content, hide if empty
-    const hasContent = adminMessageDisplay.textContent.trim();
+    const inner = adminMessageDisplay.querySelector('.marquee-inner');
+    const hasContent = (inner || adminMessageDisplay).textContent.trim();
     adminMessageDisplay.style.display = hasContent ? 'block' : 'none';
   }
+  applyMarqueeConfig();
 }
 
 // Сохранение admin-сообщения
