@@ -43,6 +43,8 @@ const soundNameInput = document.getElementById('soundName');
 const soundFileInput = document.getElementById('soundFile');
 const customSoundsGrid = document.getElementById('customSoundsGrid');
 
+const expandedDayView = document.getElementById('expandedDayView');
+
 // События
 const eventsBtn = document.getElementById('eventsBtn');
 const eventsSection = document.getElementById('eventsSection');
@@ -1419,7 +1421,7 @@ function showEventsView() {
 
 // пересборка трёхмесячного календаря
 function rebuildEventsCalendar(){
-  if(!eventsCalendar) return;
+  if(!eventsCalendar || document.querySelector('.calendar-day.expanded')) return; // Не перестраивать, если ячейка увеличена
   eventsCalendar.innerHTML='';
   [-1,0,1].forEach(off=>{
     const wrapper=document.createElement('div');
@@ -1529,6 +1531,7 @@ function isWeekendOrHoliday(date) {
 function createCalendarDay(date, currentMonth) {
   const dayEl = document.createElement('div');
   dayEl.className = 'calendar-day';
+  dayEl.dataset.date = toLocalDateString(date);
 
   const isCurrentMonth = date.getMonth() === currentMonth;
   const isToday = date.toDateString() === new Date().toDateString();
@@ -1603,7 +1606,106 @@ function createCalendarDay(date, currentMonth) {
   }
 
   dayEl.appendChild(eventsContainer);
+
+  // Expand cell on click
+  dayEl.addEventListener('click', (e) => {
+    if (e.target.closest('.event-item, .add-event-day')) {
+      return; // Don't expand if clicking on an event or add button
+    }
+    showExpandedDayView(dayEl.dataset.date);
+  });
+
   return dayEl;
+}
+
+// Overlay for modals and expanded views
+const overlay = document.createElement('div');
+overlay.className = 'overlay';
+document.body.appendChild(overlay);
+
+function showExpandedDayView(dateStr) {
+  stopAutoRefresh();
+  
+  const date = new Date(dateStr + 'T00:00:00');
+  const dayEvents = currentEvents.filter(event => event.date === dateStr);
+  
+  // Format date for header
+  const headerDate = date.toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  
+  let eventsHTML = '';
+  if (dayEvents.length > 0) {
+    eventsHTML = dayEvents.map(event => `
+      <div class="expanded-event-item" data-event-id="${event.id}" ${isAdmin ? 'title="Нажмите для редактирования"' : ''}>
+        <div class="expanded-event-title">${event.title}</div>
+        ${event.description ? `<div class="expanded-event-desc">${event.description}</div>` : ''}
+      </div>
+    `).join('');
+  } else {
+    eventsHTML = '<div class="expanded-event-empty">На этот день событий нет.</div>';
+  }
+  
+  let adminControls = '';
+  if (isAdmin) {
+    adminControls = `<button class="add-event-expanded-view">+ Добавить событие</button>`;
+  }
+
+  expandedDayView.innerHTML = `
+    <div class="expanded-day-header">
+      <h2>${headerDate}</h2>
+      <button class="close-expanded-view">&times;</button>
+    </div>
+    <div class="expanded-day-content">
+      ${eventsHTML}
+    </div>
+    <div class="expanded-day-footer">
+      ${adminControls}
+    </div>
+  `;
+  
+  expandedDayView.classList.add('visible');
+  overlay.classList.add('active');
+  
+  // Add event listeners
+  expandedDayView.querySelector('.close-expanded-view').addEventListener('click', hideExpandedDayView);
+  overlay.addEventListener('click', hideExpandedDayView, { once: true });
+  
+  if (isAdmin) {
+    expandedDayView.querySelector('.add-event-expanded-view')?.addEventListener('click', () => {
+      hideExpandedDayView();
+      openAddEventModal(dateStr);
+    });
+    
+    // Add click listener for editing events
+    expandedDayView.querySelectorAll('.expanded-event-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const eventId = parseInt(item.dataset.eventId, 10);
+        const event = currentEvents.find(e => e.id === eventId);
+        if (event) {
+          hideExpandedDayView();
+          openEditEventModal(event);
+        }
+      });
+    });
+  }
+}
+
+function hideExpandedDayView() {
+  if (!expandedDayView.classList.contains('visible')) return;
+
+  expandedDayView.classList.remove('visible');
+  overlay.classList.remove('active');
+  
+  // Clear content after transition to prevent seeing old data on next open
+  setTimeout(() => {
+    expandedDayView.innerHTML = '';
+  }, 300); // Should match CSS transition duration
+  
+  startAutoRefresh();
 }
 
 // Открытие модального окна для добавления события
