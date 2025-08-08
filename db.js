@@ -35,6 +35,10 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY DEFAULT 1,
     message TEXT NOT NULL DEFAULT ''
   );`);
+  db.run(`CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );`);
 });
 
 module.exports = { db };

@@ -278,32 +278,59 @@ function createColumnDOM({ id, title }) {
     });
 
     board.appendChild(columnEl); // ВАЖНО: добавляем сам элемент, а не DocumentFragment
-
-    // Drag & drop обработчики для колонок (draggable атрибут устанавливается в applyRoleRestrictions)
-    let isReorderInProgress = false;
-    columnEl.addEventListener('dragstart', (e) => {
-      e.dataTransfer.effectAllowed = 'move';
-      columnEl.classList.add('dragging');
-    });
-    columnEl.addEventListener('dragend', async () => {
-      columnEl.classList.remove('dragging');
-      if (!isAdmin || isReorderInProgress) return;
-      isReorderInProgress = true;
-      try {
-        const ids = Array.from(board.querySelectorAll('.column')).map(c => c.dataset.id);
-        await apiFetch('/api/columns/reorder', { method: 'POST', body: JSON.stringify({ ids }) });
-      } catch (err) {
-        await loadState();
-      } finally {
-        isReorderInProgress = false;
-      }
-    });
+    // Вся логика Drag & Drop вынесена в глобальные обработчики для надежности
 
     // Возвращаем созданный элемент для единообразия
     return columnEl;
 
   } catch (error) {
     return null;
+  }
+}
+
+function updateTaskTimer(taskEl) {
+  const now = Date.now();
+  const created = parseInt(taskEl.dataset.createdAt, 10);
+  if (isNaN(created)) return; // Guard against missing data
+
+  const diffSec = Math.floor((now - created) / 1000);
+  const timerSpan = taskEl.querySelector('.timer');
+  if (!timerSpan) return;
+
+  timerSpan.textContent = formatTime(diffSec);
+
+  if (diffSec >= timerConfig.dangerSeconds) {
+    timerSpan.style.color = 'red';
+    timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment}px`;
+  } else if (diffSec >= timerConfig.warnSeconds) {
+    timerSpan.style.color = 'orange';
+    timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment / 2}px`;
+  } else {
+    timerSpan.style.color = 'green';
+    timerSpan.style.fontSize = `${timerConfig.baseFont}px`;
+  }
+}
+
+function updateTaskTimer(taskEl) {
+  const now = Date.now();
+  const created = parseInt(taskEl.dataset.createdAt, 10);
+  if (isNaN(created)) return; // Guard against missing data
+
+  const diffSec = Math.floor((now - created) / 1000);
+  const timerSpan = taskEl.querySelector('.timer');
+  if (!timerSpan) return;
+
+  timerSpan.textContent = formatTime(diffSec);
+
+  if (diffSec >= timerConfig.dangerSeconds) {
+    timerSpan.style.color = 'red';
+    timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment}px`;
+  } else if (diffSec >= timerConfig.warnSeconds) {
+    timerSpan.style.color = 'orange';
+    timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment / 2}px`;
+  } else {
+    timerSpan.style.color = 'green';
+    timerSpan.style.fontSize = `${timerConfig.baseFont}px`;
   }
 }
 
@@ -346,6 +373,9 @@ function createTaskDOM({ id, title, created_at }) {
       });
     }
 
+    // Сразу обновляем таймер, чтобы избежать мигания "0s"
+    updateTaskTimer(taskEl);
+
     const createdDateSpan = taskClone.querySelector('.created-date');
     if (createdDateSpan) {
       createdDateSpan.textContent = formatDate(created_at);
@@ -362,58 +392,13 @@ function createTaskDOM({ id, title, created_at }) {
       });
     }
 
-    // Drag events
-    taskEl.addEventListener('dragstart', (e) => {
-      e.dataTransfer.effectAllowed = 'move';
-      taskEl.classList.add('dragging');
-    });
-    taskEl.addEventListener('dragend', () => {
-      taskEl.classList.remove('dragging');
-    });
+    // Вся логика Drag & Drop вынесена в глобальные обработчики для надежности
 
     return taskClone;
   } catch (error) {
     return null;
   }
 }
-
-/* ================================================
-   Drag & Drop логика для задач
-================================================ */
-let draggedElement = null;
-
-document.addEventListener('dragstart', (e) => {
-  if (e.target.classList.contains('task')) {
-    draggedElement = e.target;
-  }
-});
-
-document.addEventListener('dragover', (e) => {
-  const container = e.target.closest('.tasks');
-  if (container) {
-    e.preventDefault();
-    const afterElement = getDragAfterElement(container, e.clientY);
-    if (!afterElement) {
-      container.appendChild(draggedElement);
-    } else {
-      container.insertBefore(draggedElement, afterElement);
-    }
-  }
-});
-
-document.addEventListener('drop', async (e) => {
-  const container = e.target.closest('.tasks');
-  if (!container || !draggedElement) return;
-  const taskId = draggedElement.dataset.id;
-  const newColumnId = container.closest('.column').dataset.id;
-  const reset_created = timerConfig.resetOnMove;
-  await apiFetch(`/api/tasks/${taskId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ column_id: newColumnId, reset_created }),
-  });
-  if (reset_created) draggedElement.dataset.createdAt = Date.now();
-  draggedElement = null;
-});
 
 function getDragAfterElement(container, y) {
   const draggableElements = [...container.querySelectorAll('.task:not(.dragging)')];
@@ -431,9 +416,6 @@ function getDragAfterElement(container, y) {
   ).element;
 }
 
-/* ================================================
-   Drag & Drop логика для колонок
-================================================ */
 function getColumnAfterElement(container, x) {
   const draggableElements = [...container.querySelectorAll('.column:not(.dragging)')];
   return draggableElements.reduce(
@@ -450,62 +432,103 @@ function getColumnAfterElement(container, x) {
   ).element;
 }
 
-// Глобальные обработчики для drag & drop колонок
-let dragOverTimeout = null;
+/* ================================================
+   УНИФИЦИРОВАННАЯ ЛОГИКА DRAG & DROP
+================================================ */
+let draggedItem = null;
+let isDraggingColumn = false;
+let originalColumnId = null; // Для отслеживания перемещения задач между колонками
+let reorderInProgress = false;
+
+document.addEventListener('dragstart', (e) => {
+  if (!isAdmin) return;
+
+  draggedItem = e.target;
+  isDraggingColumn = draggedItem.classList.contains('column');
+
+  if (!isDraggingColumn && !draggedItem.classList.contains('task')) {
+    draggedItem = null;
+    return;
+  }
+
+  // Сохраняем исходную колонку для задачи
+  if (!isDraggingColumn) {
+    originalColumnId = draggedItem.closest('.column').dataset.id;
+  }
+
+  // Добавляем класс 'dragging' с небольшой задержкой, чтобы браузер успел создать "призрак" элемента
+  setTimeout(() => {
+    if (draggedItem) draggedItem.classList.add('dragging');
+  }, 0);
+});
+
+document.addEventListener('dragend', () => {
+  if (!draggedItem) return;
+  draggedItem.classList.remove('dragging');
+  draggedItem = null;
+  isDraggingColumn = false;
+  originalColumnId = null;
+  reorderInProgress = false; // Сбрасываем флаг на всякий случай
+});
 
 document.addEventListener('dragover', (e) => {
-  // Проверяем, что перетаскиваем колонку
-  const draggingColumn = board.querySelector('.column.dragging');
-  if (!draggingColumn || !isAdmin) return;
-  
-  // Находим ближайшую колонку под курсором
-  const column = e.target.closest('.column');
-  if (!column || column === draggingColumn) return;
-  
   e.preventDefault();
-  
-  // Ограничиваем частоту перестановки колонок
-  if (dragOverTimeout) return;
-  dragOverTimeout = setTimeout(() => {
-    dragOverTimeout = null;
-  }, 10); // Ограничиваем до 100 раз в секунду
-  
-  // Определяем позицию для вставки
-  const afterElement = getColumnAfterElement(board, e.clientX);
-  if (!afterElement) {
-    board.appendChild(draggingColumn);
+  if (!draggedItem) return;
+
+  if (isDraggingColumn) {
+    const afterElement = getColumnAfterElement(board, e.clientX);
+    if (afterElement) {
+      board.insertBefore(draggedItem, afterElement);
+    } else {
+      board.appendChild(draggedItem);
+    }
   } else {
-    board.insertBefore(draggingColumn, afterElement);
+    const container = e.target.closest('.tasks');
+    if (container) {
+      const afterElement = getDragAfterElement(container, e.clientY);
+      if (afterElement) {
+        container.insertBefore(draggedItem, afterElement);
+      } else {
+        container.appendChild(draggedItem);
+      }
+    }
   }
 });
 
-let saveInProgress = false;
-
 document.addEventListener('drop', async (e) => {
-  const draggingColumn = board.querySelector('.column.dragging');
-  if (!draggingColumn || !isAdmin) return;
-  
   e.preventDefault();
-  draggingColumn.classList.remove('dragging');
-  
-  // Предотвращаем множественные сохранения
-  if (saveInProgress) return;
-  saveInProgress = true;
-  
-  try {
-    // Сохраняем новый порядок на сервере
-    const ids = Array.from(board.querySelectorAll('.column')).map(col => col.dataset.id);
-    
-    const response = await apiFetch('/api/columns/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ ids })
-    });
-    
-  } catch (error) {
-    // Перезагружаем состояние в случае ошибки
-    await loadState();
-  } finally {
-    saveInProgress = false;
+  if (!draggedItem || reorderInProgress) return;
+
+  reorderInProgress = true;
+
+  if (isDraggingColumn) {
+    try {
+      const ids = Array.from(board.querySelectorAll('.column')).map(col => col.dataset.id);
+      await apiFetch('/api/columns/reorder', { method: 'POST', body: JSON.stringify({ ids }) });
+    } catch (error) {
+      await loadState(); // Восстанавливаем доску при ошибке
+    }
+  } else {
+    const newColumnEl = draggedItem.closest('.column');
+    if (newColumnEl) {
+      const column_id = newColumnEl.dataset.id;
+      const tasksContainer = newColumnEl.querySelector('.tasks');
+      const task_ids = Array.from(tasksContainer.querySelectorAll('.task')).map(task => task.dataset.id);
+      
+      const payload = { column_id, task_ids };
+      if (timerConfig.resetOnMove && column_id !== originalColumnId) {
+        payload.moved_task_id_to_reset_timer = draggedItem.dataset.id;
+      }
+
+      try {
+        await apiFetch('/api/tasks/reorder', { method: 'POST', body: JSON.stringify(payload) });
+        if (payload.moved_task_id_to_reset_timer) {
+          draggedItem.dataset.createdAt = Date.now();
+        }
+      } catch (error) {
+        await loadState(); // Восстанавливаем доску при ошибке
+      }
+    }
   }
 });
 
@@ -520,24 +543,7 @@ function formatTime(seconds) {
 }
 
 function updateTimers() {
-  const now = Date.now();
-  document.querySelectorAll('.task').forEach((task) => {
-    const created = parseInt(task.dataset.createdAt, 10);
-    const diffSec = Math.floor((now - created) / 1000);
-    const timerSpan = task.querySelector('.timer');
-    timerSpan.textContent = formatTime(diffSec);
-
-    if (diffSec >= timerConfig.dangerSeconds) {
-      timerSpan.style.color = 'red';
-      timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment}px`;
-    } else if (diffSec >= timerConfig.warnSeconds) {
-      timerSpan.style.color = 'orange';
-      timerSpan.style.fontSize = `${timerConfig.baseFont + timerConfig.increment / 2}px`;
-    } else {
-      timerSpan.style.color = 'green';
-      timerSpan.style.fontSize = `${timerConfig.baseFont}px`;
-    }
-  });
+  document.querySelectorAll('.task').forEach(updateTaskTimer);
 }
 setInterval(updateTimers, 1000);
 
@@ -635,13 +641,6 @@ function stopAutoRefresh() {
 /* ================================================
    Настройки бегущей строки
 ================================================ */
-function loadMarqueeConfig() {
-    const saved = localStorage.getItem('marqueeConfig');
-    if (saved) {
-        marqueeConfig = JSON.parse(saved);
-    }
-}
-
 function applyMarqueeConfig() {
     const isMarquee = marqueeConfig.enabled && adminMessageDisplay.textContent.trim();
 
@@ -664,16 +663,6 @@ function applyMarqueeConfig() {
     }
 }
 
-function saveMarqueeConfig() {
-    marqueeConfig.enabled = marqueeEnabledInput.checked;
-    const speed = parseInt(marqueeSpeedInput.value, 10);
-    if (speed > 0) {
-        marqueeConfig.speed = speed;
-    }
-    localStorage.setItem('marqueeConfig', JSON.stringify(marqueeConfig));
-    applyMarqueeConfig();
-}
-
 /* ================================================
    Модальное окно настроек таймера
 ================================================ */
@@ -691,14 +680,29 @@ function closeSettingsModal() {
 
 timerSettingsBtn.addEventListener('click', openSettingsModal);
 closeSettingsBtn.addEventListener('click', closeSettingsModal);
-saveSettingsBtn.addEventListener('click', () => {
+saveSettingsBtn.addEventListener('click', async () => {
   const warn = parseInt(warnInput.value, 10);
   const danger = parseInt(dangerInput.value, 10);
   if (warn && danger && warn < danger) {
     timerConfig.warnSeconds = warn * 60;
     timerConfig.dangerSeconds = danger * 60;
     timerConfig.resetOnMove = resetCheckbox.checked;
-    saveMarqueeConfig();
+
+    const newMarqueeConfig = {
+      enabled: marqueeEnabledInput.checked,
+      speed: parseInt(marqueeSpeedInput.value, 10) || 15
+    };
+
+    try {
+      await apiFetch('/api/settings/marquee', {
+        method: 'PUT',
+        body: JSON.stringify({ config: newMarqueeConfig })
+      });
+      marqueeConfig = newMarqueeConfig;
+      applyMarqueeConfig();
+    } catch (err) {
+      alert('Ошибка сохранения настроек бегущей строки');
+    }
     closeSettingsModal();
   } else {
     alert('Проверьте введённые значения.');
@@ -738,14 +742,19 @@ async function loadState() {
       }
     });
 
+     
     // Сопоставление колонки -> tasks контейнер
     const map = {};
+    const taskOrderMap = {}; // Для сортировки задач
     board.querySelectorAll('.column').forEach((colEl) => {
       const tasksContainer = colEl.querySelector('.tasks');
       if (colEl.dataset.id && tasksContainer) {
         map[colEl.dataset.id] = tasksContainer;
+        taskOrderMap[colEl.dataset.id] = [];
       }
     });
+
+
 
     // Размещаем задачи
     if (data.tasks && Array.isArray(data.tasks)) {
@@ -754,13 +763,20 @@ async function loadState() {
           return;
         }
 
-        const container = map[task.column_id];
-        if (container) {
-          const taskDOM = createTaskDOM(task);
-          if (taskDOM) container.appendChild(taskDOM);
-        } else {
+        if (taskOrderMap[task.column_id]) {
+          taskOrderMap[task.column_id].push(task);
         }
       });
+
+      // Сортируем и вставляем задачи
+      for (const colId in taskOrderMap) {
+        const container = map[colId];
+        const sortedTasks = taskOrderMap[colId].sort((a, b) => (a.position || 0) - (b.position || 0));
+        sortedTasks.forEach(task => {
+            const taskDOM = createTaskDOM(task);
+            if (taskDOM) container.appendChild(taskDOM);
+        });
+      }
     }
     
     // Загружаем админ-сообщение из состояния
@@ -775,6 +791,12 @@ async function loadState() {
       applyAdminMessageUI();
     }
     
+    // Загружаем настройки бегущей строки
+    if (data.marqueeConfig) {
+      marqueeConfig = data.marqueeConfig;
+      applyMarqueeConfig();
+    }
+
     // Применяем ограничения ролей после загрузки
     applyRoleRestrictions();
   } catch (err) {
@@ -808,8 +830,6 @@ themeToggle.addEventListener('click', () => {
   themeToggle.textContent = isDark ? '☀️' : '🌙';
 });
 applyStoredTheme();
-loadMarqueeConfig();
-applyMarqueeConfig();
 
 /* format date */
 function formatDate(ts) {

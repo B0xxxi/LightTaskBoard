@@ -112,8 +112,12 @@ app.get('/api/state', auth, async (req, res) => {
     const tasks = await all('SELECT * FROM tasks ORDER BY position, id');
     const events = await all('SELECT * FROM events ORDER BY date');
     const adminMessageRow = await get('SELECT message FROM admin_message WHERE id = 1');
+    const marqueeConfigRow = await get("SELECT value FROM settings WHERE key = 'marqueeConfig'");
+
     const adminMessage = adminMessageRow ? adminMessageRow.message : '';
-    res.json({ columns, tasks, events, adminMessage, role: req.role });
+    const marqueeConfig = marqueeConfigRow ? JSON.parse(marqueeConfigRow.value) : { enabled: false, speed: 15 };
+
+    res.json({ columns, tasks, events, adminMessage, role: req.role, marqueeConfig });
   } catch (e) {
     console.error('Error loading state:', e);
     res.status(500).json({ error: e.message });
@@ -155,21 +159,23 @@ app.put('/api/columns/:id', auth, requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/columns/reorder', (req, res) => {
+app.post('/api/columns/reorder', auth, requireAdmin, async (req, res) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) {
     return res.status(400).json({ success: false, error: 'Invalid data' });
   }
   
   try {
-    const updatedColumns = ids.map((id, i) => {
-      db.prepare('UPDATE columns SET position = ? WHERE id = ?').run(i, id);
-      return db.prepare('SELECT * FROM columns WHERE id = ?').get(id);
-    });
+    // Используем транзакцию для атомарного обновления
+    await run('BEGIN TRANSACTION');
+    await Promise.all(ids.map((id, index) => 
+      run('UPDATE columns SET position = ? WHERE id = ?', [index, id])
+    ));
+    await run('COMMIT');
     
     res.json({ success: true });
   } catch (e) {
-    console.error('Ошибка при изменении порядка колонок:', e);
+    await run('ROLLBACK').catch(err => console.error('Rollback failed', err));
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -237,19 +243,43 @@ app.post('/api/tasks', auth, requireAdmin, async (req, res) => {
 });
 
 app.put('/api/tasks/:id', auth, requireAdmin, async (req, res) => {
-  const { title, column_id, reset_created } = req.body;
+  // Этот эндпоинт теперь только для изменения контента задачи, не для перемещения
+  const { title, reset_created } = req.body;
   const sets = [];
   const params = [];
   if (title !== undefined) { sets.push('title=?'); params.push(title); }
-  if (column_id !== undefined) { sets.push('column_id=?'); params.push(column_id); }
   if (reset_created) { sets.push('created_at=?'); params.push(Date.now()); }
-  if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+  if (!sets.length) return res.status(400).json({ error: 'no fields to update' });
   params.push(req.params.id);
   try {
     await run(`UPDATE tasks SET ${sets.join(',')} WHERE id=?`, params);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tasks/reorder', auth, requireAdmin, async (req, res) => {
+  const { column_id, task_ids, moved_task_id_to_reset_timer } = req.body;
+  if (!column_id || !task_ids || !Array.isArray(task_ids)) {
+    return res.status(400).json({ error: 'column_id and task_ids array are required' });
+  }
+
+  try {
+    await run('BEGIN TRANSACTION');
+    // Обновляем позицию и ID колонки для всех задач в списке
+    await Promise.all(task_ids.map((id, index) => 
+      run('UPDATE tasks SET position = ?, column_id = ? WHERE id = ?', [index, column_id, id])
+    ));
+    // Опционально сбрасываем таймер для перемещенной задачи
+    if (moved_task_id_to_reset_timer) {
+      await run('UPDATE tasks SET created_at = ? WHERE id = ?', [Date.now(), moved_task_id_to_reset_timer]);
+    }
+    await run('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await run('ROLLBACK').catch(err => console.error('Rollback failed', err));
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -398,6 +428,30 @@ app.put('/api/admin-message', auth, requireAdmin, async (req, res) => {
   try {
     // Используем INSERT OR REPLACE для обновления записи с id=1
     await run('INSERT OR REPLACE INTO admin_message (id, message) VALUES (1, ?)', [message]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**************** SETTINGS ****************/
+app.get('/api/settings/marquee', auth, async (req, res) => {
+  try {
+    const row = await get("SELECT value FROM settings WHERE key = 'marqueeConfig'");
+    const config = row ? JSON.parse(row.value) : { enabled: false, speed: 15 };
+    res.json({ config });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/settings/marquee', auth, requireAdmin, async (req, res) => {
+  const { config } = req.body;
+  if (!config || typeof config.enabled !== 'boolean' || typeof config.speed !== 'number') {
+    return res.status(400).json({ error: 'Valid config object is required' });
+  }
+  try {
+    await run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['marqueeConfig', JSON.stringify(config)]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
