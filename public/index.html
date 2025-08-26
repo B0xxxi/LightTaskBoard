@@ -81,6 +81,20 @@
           Скорость (секунд на полный оборот):
           <input type="number" id="marqueeSpeed" min="1" />
         </label>
+        <hr>
+        <h3>Управление базой данных</h3>
+        <div class="database-controls">
+          <div class="control-group">
+            <label>Экспорт базы данных:</label>
+            <button id="exportDatabase" type="button">📥 Экспортировать</button>
+          </div>
+          <div class="control-group">
+            <label>Импорт базы данных:</label>
+            <input type="file" id="importDatabaseFile" accept="application/json" />
+            <button id="importDatabase" type="button">📤 Импортировать</button>
+          </div>
+          <small class="warning-text">⚠️ При импорте текущие данные будут заменены. При неудачном импорте данные автоматически восстанавливаются.</small>
+        </div>
         <div class="modal-actions">
           <button id="saveSettings">Сохранить</button>
           <button id="closeSettings">Отмена</button>

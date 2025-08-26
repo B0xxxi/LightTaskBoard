@@ -21,6 +21,9 @@ const saveSettingsBtn = document.getElementById('saveSettings');
 const closeSettingsBtn = document.getElementById('closeSettings');
 const marqueeEnabledInput = document.getElementById('marqueeEnabled');
 const marqueeSpeedInput = document.getElementById('marqueeSpeed');
+const exportDatabaseBtn = document.getElementById('exportDatabase');
+const importDatabaseBtn = document.getElementById('importDatabase');
+const importDatabaseFileInput = document.getElementById('importDatabaseFile');
 
 const loginModal = document.getElementById('loginModal');
 const passwordInput = document.getElementById('passwordInput');
@@ -405,10 +408,11 @@ function getColumnAfterElement(container, x) {
    Таймеры и UI
 ================================================ */
 function formatTime(seconds) {
-  const h = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  return `${h ? h + 'h ' : ''}${m ? m + 'm ' : ''}${s}s`;
+  return `${days ? days + 'd ' : ''}${h ? h + 'h ' : ''}${m ? m + 'm ' : ''}${s}s`;
 }
 
 function updateTaskTimer(taskEl) {
@@ -479,6 +483,88 @@ saveSettingsBtn.addEventListener('click', () => {
 settingsModal.addEventListener('click', (e) => {
   if (e.target === settingsModal) closeSettingsModal();
 });
+
+/* ================================================
+   Database Export/Import
+================================================ */
+
+async function exportDatabase() {
+  try {
+    exportDatabaseBtn.disabled = true;
+    exportDatabaseBtn.textContent = '⏳ Экспорт...';
+    
+    const response = await fetch('/api/database/export', {
+      method: 'GET',
+      headers: { 'x-auth-key': authKey }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Ошибка экспорта');
+    }
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `taskboard-backup-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    alert('База данных успешно экспортирована!');
+  } catch (error) {
+    alert(`Ошибка экспорта: ${error.message}`);
+  } finally {
+    exportDatabaseBtn.disabled = false;
+    exportDatabaseBtn.textContent = '📥 Экспортировать';
+  }
+}
+
+async function importDatabase() {
+  const file = importDatabaseFileInput.files[0];
+  if (!file) {
+    alert('Выберите файл для импорта');
+    return;
+  }
+  
+  if (!confirm('Вы уверены? Это заменит все текущие данные. При ошибке импорта данные будут автоматически восстановлены.')) {
+    return;
+  }
+  
+  try {
+    importDatabaseBtn.disabled = true;
+    importDatabaseBtn.textContent = '⏳ Импорт...';
+    
+    const formData = new FormData();
+    formData.append('importFile', file);
+    
+    const response = await fetch('/api/database/import', {
+      method: 'POST',
+      headers: { 'x-auth-key': authKey },
+      body: formData
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Ошибка импорта');
+    }
+    
+    importDatabaseFileInput.value = '';
+    alert(result.message || 'База данных успешно импортирована!');
+  } catch (error) {
+    alert(`${error.message}`);
+  } finally {
+    importDatabaseBtn.disabled = false;
+    importDatabaseBtn.textContent = '📤 Импортировать';
+  }
+}
+
+exportDatabaseBtn.addEventListener('click', exportDatabase);
+importDatabaseBtn.addEventListener('click', importDatabase);
 
 /* ================================================
    Админ-сообщение и бегущая строка
@@ -809,6 +895,14 @@ function applyRoleRestrictions() {
   timerSettingsBtn.style.display = isAdm ? '' : 'none';
   addColumnBtn.style.display = isAdm ? '' : 'none';
   addEventBtn.style.display = isAdm ? '' : 'none';
+  
+  // Database management controls
+  if (exportDatabaseBtn) exportDatabaseBtn.style.display = isAdm ? '' : 'none';
+  if (importDatabaseBtn) importDatabaseBtn.style.display = isAdm ? '' : 'none';
+  if (importDatabaseFileInput) importDatabaseFileInput.style.display = isAdm ? '' : 'none';
+  document.querySelectorAll('.database-controls').forEach(el => {
+    el.style.display = isAdm ? '' : 'none';
+  });
   
   // Для саундборда кнопка видима всем, но функционал внутри (загрузка) только для админа
   soundboardBtn.style.display = ''; 

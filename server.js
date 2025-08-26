@@ -392,6 +392,198 @@ app.post('/api/sounds/upload', httpAuth, httpRequireAdmin, upload.single('soundF
   }
 });
 
+// --- Database Export/Import ---
+app.get('/api/database/export', httpAuth, httpRequireAdmin, async (req, res) => {
+  try {
+    const columns = await all('SELECT * FROM columns ORDER BY position, id');
+    const tasks = await all('SELECT * FROM tasks ORDER BY position, id');
+    const events = await all('SELECT * FROM events ORDER BY date');
+    const customSounds = await all('SELECT * FROM custom_sounds ORDER BY name');
+    const adminMessage = await get('SELECT message FROM admin_message WHERE id = 1');
+    const settings = await all('SELECT * FROM settings');
+
+    const exportData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      data: {
+        columns,
+        tasks,
+        events,
+        custom_sounds: customSounds,
+        admin_message: adminMessage ? adminMessage.message : '',
+        settings
+      }
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="taskboard-backup-${Date.now()}.json"`);
+    res.json(exportData);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Database Import with Backup ---
+app.post('/api/database/import', httpAuth, httpRequireAdmin, upload.single('importFile'), async (req, res) => {
+  let backupData = null;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл для импорта обязателен' });
+    }
+
+    // Create backup before import
+    const columns = await all('SELECT * FROM columns ORDER BY position, id');
+    const tasks = await all('SELECT * FROM tasks ORDER BY position, id');
+    const events = await all('SELECT * FROM events ORDER BY date');
+    const customSounds = await all('SELECT * FROM custom_sounds ORDER BY name');
+    const adminMessage = await get('SELECT message FROM admin_message WHERE id = 1');
+    const settings = await all('SELECT * FROM settings');
+
+    backupData = {
+      columns, tasks, events, 
+      custom_sounds: customSounds,
+      admin_message: adminMessage ? adminMessage.message : '',
+      settings
+    };
+
+    // Parse import file
+    const importContent = fs.readFileSync(req.file.path, 'utf8');
+    fs.unlinkSync(req.file.path); // Clean up uploaded file
+    
+    const importData = JSON.parse(importContent);
+    if (!importData.data) {
+      throw new Error('Неверный формат файла импорта');
+    }
+
+    // Clear existing data and import new data
+    await run('BEGIN TRANSACTION');
+    
+    await run('DELETE FROM columns');
+    await run('DELETE FROM tasks');
+    await run('DELETE FROM events');
+    await run('DELETE FROM custom_sounds');
+    await run('DELETE FROM admin_message');
+    await run('DELETE FROM settings');
+
+    // Import columns
+    if (importData.data.columns) {
+      for (const col of importData.data.columns) {
+        await run('INSERT INTO columns (id, title, position) VALUES (?, ?, ?)', 
+          [col.id, col.title, col.position]);
+      }
+    }
+
+    // Import tasks
+    if (importData.data.tasks) {
+      for (const task of importData.data.tasks) {
+        await run('INSERT INTO tasks (id, title, column_id, created_at, position) VALUES (?, ?, ?, ?, ?)', 
+          [task.id, task.title, task.column_id, task.created_at, task.position]);
+      }
+    }
+
+    // Import events
+    if (importData.data.events) {
+      for (const event of importData.data.events) {
+        await run('INSERT INTO events (id, date, title, description) VALUES (?, ?, ?, ?)', 
+          [event.id, event.date, event.title, event.description || '']);
+      }
+    }
+
+    // Import custom sounds
+    if (importData.data.custom_sounds) {
+      for (const sound of importData.data.custom_sounds) {
+        await run('INSERT INTO custom_sounds (id, name, filename, original_name, created_at) VALUES (?, ?, ?, ?, ?)', 
+          [sound.id, sound.name, sound.filename, sound.original_name, sound.created_at]);
+      }
+    }
+
+    // Import admin message
+    if (importData.data.admin_message !== undefined) {
+      await run('INSERT INTO admin_message (id, message) VALUES (1, ?)', [importData.data.admin_message]);
+    }
+
+    // Import settings
+    if (importData.data.settings) {
+      for (const setting of importData.data.settings) {
+        await run('INSERT INTO settings (key, value) VALUES (?, ?)', [setting.key, setting.value]);
+      }
+    }
+
+    await run('COMMIT');
+
+    // Broadcast state update
+    const state = await getFullState();
+    io.emit('state:updated', state);
+
+    res.json({ success: true, message: 'База данных успешно импортирована' });
+  } catch (e) {
+    // Rollback on error
+    await run('ROLLBACK').catch(() => {});
+    
+    if (backupData) {
+      try {
+        // Restore from backup
+        await run('BEGIN TRANSACTION');
+        
+        await run('DELETE FROM columns');
+        await run('DELETE FROM tasks'); 
+        await run('DELETE FROM events');
+        await run('DELETE FROM custom_sounds');
+        await run('DELETE FROM admin_message');
+        await run('DELETE FROM settings');
+
+        // Restore columns
+        for (const col of backupData.columns) {
+          await run('INSERT INTO columns (id, title, position) VALUES (?, ?, ?)', 
+            [col.id, col.title, col.position]);
+        }
+
+        // Restore tasks
+        for (const task of backupData.tasks) {
+          await run('INSERT INTO tasks (id, title, column_id, created_at, position) VALUES (?, ?, ?, ?, ?)', 
+            [task.id, task.title, task.column_id, task.created_at, task.position]);
+        }
+
+        // Restore events
+        for (const event of backupData.events) {
+          await run('INSERT INTO events (id, date, title, description) VALUES (?, ?, ?, ?)', 
+            [event.id, event.date, event.title, event.description || '']);
+        }
+
+        // Restore custom sounds
+        for (const sound of backupData.custom_sounds) {
+          await run('INSERT INTO custom_sounds (id, name, filename, original_name, created_at) VALUES (?, ?, ?, ?, ?)', 
+            [sound.id, sound.name, sound.filename, sound.original_name, sound.created_at]);
+        }
+
+        // Restore admin message
+        if (backupData.admin_message !== undefined) {
+          await run('INSERT INTO admin_message (id, message) VALUES (1, ?)', [backupData.admin_message]);
+        }
+
+        // Restore settings
+        for (const setting of backupData.settings) {
+          await run('INSERT INTO settings (key, value) VALUES (?, ?)', [setting.key, setting.value]);
+        }
+
+        await run('COMMIT');
+
+        // Broadcast state update with restored data
+        const state = await getFullState();
+        io.emit('state:updated', state);
+      } catch (restoreError) {
+        await run('ROLLBACK').catch(() => {});
+        console.error('Failed to restore backup:', restoreError);
+      }
+    }
+
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: `Ошибка импорта: ${e.message}. База данных восстановлена из резервной копии.` });
+  }
+});
+
 
 // --- Статика и SPA ---
 app.use(express.static(path.join(__dirname, 'public')));
